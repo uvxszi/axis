@@ -39,6 +39,14 @@ pub mod marker {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct ApplicationMarker;
 
+    /// Marker for application command IDs.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct ApplicationCommandMarker;
+
+    /// Marker for audit log entry IDs.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct AuditLogEntryMarker;
+
     /// Marker for auto-moderation rule IDs.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct AutoModRuleMarker;
@@ -223,6 +231,10 @@ pub type RoleId = Id<marker::RoleMarker>;
 pub type EmojiId = Id<marker::EmojiMarker>;
 /// An ID of an application.
 pub type ApplicationId = Id<marker::ApplicationMarker>;
+/// An ID of an application command.
+pub type ApplicationCommandId = Id<marker::ApplicationCommandMarker>;
+/// An ID of an audit log entry.
+pub type AuditLogEntryId = Id<marker::AuditLogEntryMarker>;
 /// An ID of an interaction.
 pub type InteractionId = Id<marker::InteractionMarker>;
 /// An ID of an integration.

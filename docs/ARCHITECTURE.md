@@ -10,10 +10,10 @@ updated as phases land.
 |---|---|---|
 | `axis-core` | Typed snowflake IDs, timestamps, gateway intents, permissions, the unified error system, credential redaction, optional logging setup | — |
 | `axis-model` | Strongly typed Discord data models | `axis-core` |
-| `axis` | Facade: re-exports the pieces applications touch, provides the `prelude` | `axis-core`, `axis-model`, `axis-rest`, `axis-gateway` |
+| `axis` | Facade: re-exports the pieces applications touch, provides the `prelude` | `axis-core`, `axis-model`, `axis-rest`, `axis-gateway`, `axis-events` |
 | `axis-rest` | Async REST client: auth, rate limits, typed request builders | `axis-core`, `axis-model` |
 | `axis-gateway` | Gateway WebSocket client: identify, heartbeat, resume, reconnect | `axis-core` |
-| `axis-events` | Event parsing and asynchronous handler dispatch *(Phase 4)* | `axis-core`, `axis-model`, `axis-gateway` |
+| `axis-events` | Typed event parsing and asynchronous handler dispatch | `axis-core`, `axis-model`, `axis-gateway` |
 | `axis-commands` | Slash-command framework on top of interactions *(Phase 5)* | `axis-core`, `axis-model`, `axis-rest`, `axis-events` |
 | `tests` (`axis-integration-tests`) | Cross-crate integration tests through the public facade API | `axis` |
 
@@ -216,8 +216,8 @@ exactly what they require (the Phase 5 command framework's pre-checks).
 | 1 | Workspace, core types, error system, first model, docs | ✅ done |
 | 2 | REST: auth, HTTP client, rate limiting, message/channel/guild/member/role/reaction ops, mocked tests | ✅ done |
 | 3 | Gateway: connect, identify, heartbeat, resume, reconnect, event dispatch | ✅ done |
-| 4 | Models expansion + event system + handlers | next |
-| 5 | Interactions and slash-command framework | ⏳ |
+| 4 | Models expansion + event system + handlers | ✅ done |
+| 5 | Interactions and slash-command framework | next |
 | 6 | Examples, integration/long-run testing, docs polish | ⏳ |
 
 ## Testing strategy
@@ -296,3 +296,42 @@ teardown, abrupt transport drops, graceful shutdown (close frame 1000),
 and the reconnect-attempts cap. `resume_gateway_url` in the fixture points
 back at the test server, so the full reconnect path — including URL
 switching — is exercised over real sockets.
+
+## Phase 4 design decisions (Models & events)
+
+### 19. Unknown events are data, not errors
+
+Event kinds Axis does not model yet (Discord ships new ones regularly)
+surface as `Event::Unknown { kind, data }` — a running bot must survive
+API growth. Within known kinds the same philosophy continues: unknown JSON
+fields are ignored. Parse failures for *known* kinds do return errors from
+`Event::parse`, but the dispatcher's run loop logs and skips them: one
+malformed dispatch must not end a long-running bot. Only gateway stream
+errors are fatal, because the shard itself has given up.
+
+### 20. Handler semantics: ordered, per-event, survivable
+
+Handlers are async, stored per event kind, and awaited in registration
+order (predictable ordering; no cross-event concurrency hazards). The
+catch-all (`on_any`) runs before typed handlers and receives a cloned
+event (owned `Event`, since `&Event` borrows cannot support `'static`
+futures). A handler error stops later handlers *for that event* and is
+returned from `dispatch` — but the `run` loop logs it and continues, so
+one failing handler never kills the bot.
+
+### 21. Event payloads are flat, per the wire
+
+Payloads that Discord flattens into their parent object
+(`GUILD_MEMBER_ADD`/`UPDATE` put `guild_id` beside member fields) are
+modeled with `#[serde(flatten)]`; `GUILD_CREATE` flattens the standard
+guild object plus its connection extras. `MESSAGE_UPDATE` gets a dedicated
+`PartialMessage` (the docs make most fields partial there) instead of
+pretending it is a full `Message`.
+
+### 22. Interactions: typed envelope, raw data (for now)
+
+`Interaction` is fully typed (id, type, guild/channel, member/user,
+token, permissions); the `data` field stays raw because its shape differs
+per interaction type. `Interaction::command_data()` decodes the
+application-command shape (including `ResolvedData`), and Phase 5 builds
+the typed per-kind enum plus the command framework on top.

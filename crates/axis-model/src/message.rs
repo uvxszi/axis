@@ -4,9 +4,9 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
-use axis_core::{ChannelId, GuildId, MessageId, Timestamp, WebhookId, id::RoleId};
+use axis_core::{ChannelId, GuildId, MessageId, Timestamp, UserId, WebhookId, id::RoleId};
 
-use crate::{emoji::Emoji, user::User};
+use crate::{emoji::Emoji, member::Member, user::User};
 
 bitflags! {
     /// Flags on a message.
@@ -375,6 +375,113 @@ pub struct EmbedField {
     pub inline: Option<bool>,
 }
 
+/// A partial message, as delivered by gateway `MESSAGE_UPDATE`.
+///
+/// Message updates carry only the fields that Discord includes for the
+/// update — most fields are optional, and `author` may be a partial user.
+/// Treat every field as potentially absent.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PartialMessage {
+    /// The message ID.
+    pub id: MessageId,
+    /// The ID of the channel the message is in.
+    pub channel_id: ChannelId,
+    /// The guild the message is in, when applicable.
+    pub guild_id: Option<GuildId>,
+    /// The author; may be a partial user object in updates.
+    pub author: Option<User>,
+    /// The message content, when included.
+    pub content: Option<String>,
+    /// When the message was sent, when included.
+    pub timestamp: Option<Timestamp>,
+    /// When the message was last edited, when included.
+    pub edited_timestamp: Option<Timestamp>,
+    /// Always `false` in message updates, per the docs.
+    pub tts: Option<bool>,
+    /// Whether the message mentions `@everyone`/`@here`, when included.
+    pub mention_everyone: Option<bool>,
+    /// Users mentioned, when included.
+    pub mentions: Option<Vec<User>>,
+    /// Roles mentioned, when included.
+    pub mention_roles: Option<Vec<RoleId>>,
+    /// Attachments, when included.
+    pub attachments: Option<Vec<Attachment>>,
+    /// Embeds, when included.
+    pub embeds: Option<Vec<Embed>>,
+    /// Whether the message is pinned, when included.
+    pub pinned: Option<bool>,
+    /// The message flags, when included.
+    pub flags: Option<MessageFlags>,
+    /// The message type, when included.
+    pub r#type: Option<MessageType>,
+}
+
+/// A message deletion notification (`MESSAGE_DELETE`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MessageDelete {
+    /// The deleted message's ID.
+    pub id: MessageId,
+    /// The channel the message was in.
+    pub channel_id: ChannelId,
+    /// The guild the message was in, when applicable.
+    pub guild_id: Option<GuildId>,
+}
+
+/// A bulk deletion notification (`MESSAGE_DELETE_BULK`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MessageDeleteBulk {
+    /// The deleted messages' IDs.
+    pub ids: Vec<MessageId>,
+    /// The channel the messages were in.
+    pub channel_id: ChannelId,
+    /// The guild the messages were in, when applicable.
+    pub guild_id: Option<GuildId>,
+}
+
+/// A reaction added to a message (`MESSAGE_REACTION_ADD`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MessageReactionAdd {
+    /// The user who reacted.
+    pub user_id: UserId,
+    /// The channel containing the message.
+    pub channel_id: ChannelId,
+    /// The message that was reacted to.
+    pub message_id: MessageId,
+    /// The guild containing the channel, when applicable.
+    pub guild_id: Option<GuildId>,
+    /// The member who reacted, when the reaction happened in a guild.
+    pub member: Option<Member>,
+    /// The reacted emoji, in the partial emoji shape.
+    pub emoji: Emoji,
+    /// The author of the reacted message, when Discord includes it.
+    pub message_author_id: Option<UserId>,
+    /// Whether this is a super reaction.
+    pub burst: bool,
+    /// The super reaction's color palette, when present.
+    pub burst_colors: Option<Vec<String>>,
+    /// The documented reaction type value (0 = normal, 1 = super reaction).
+    pub r#type: u8,
+}
+
+/// A reaction removed from a message (`MESSAGE_REACTION_REMOVE`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MessageReactionRemove {
+    /// The user whose reaction was removed.
+    pub user_id: UserId,
+    /// The channel containing the message.
+    pub channel_id: ChannelId,
+    /// The message the reaction was on.
+    pub message_id: MessageId,
+    /// The guild containing the channel, when applicable.
+    pub guild_id: Option<GuildId>,
+    /// The removed emoji, in the partial emoji shape.
+    pub emoji: Emoji,
+    /// Whether the removed reaction was a super reaction.
+    pub burst: bool,
+    /// The documented reaction type value (0 = normal, 1 = super reaction).
+    pub r#type: u8,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -557,5 +664,71 @@ mod tests {
         assert_eq!(reference.message_id, None);
         let json = serde_json::to_string(&reference).unwrap();
         assert_eq!(json, "{}");
+    }
+
+    #[test]
+    fn partial_message_tolerates_sparse_payloads() {
+        // MESSAGE_UPDATE may carry only a handful of fields.
+        let message: PartialMessage = serde_json::from_str(
+            r#"{
+                "id": "1021934727088820224",
+                "channel_id": "838309323191025706",
+                "content": "edited!",
+                "author": { "id": "80351110224678912", "username": "N", "discriminator": "0" }
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(message.content.as_deref(), Some("edited!"));
+        assert_eq!(message.guild_id, None);
+        assert_eq!(message.embeds, None);
+        assert_eq!(message.r#type, None);
+    }
+
+    #[test]
+    fn message_delete_payloads() {
+        let delete: MessageDelete =
+            serde_json::from_str(r#"{ "id": "1", "channel_id": "2", "guild_id": "3" }"#).unwrap();
+        assert_eq!(delete.id.get(), 1);
+        assert_eq!(delete.guild_id.map(|g| g.get()), Some(3));
+
+        let bulk: MessageDeleteBulk =
+            serde_json::from_str(r#"{ "ids": ["1", "2"], "channel_id": "2" }"#).unwrap();
+        assert_eq!(bulk.ids.len(), 2);
+        assert_eq!(bulk.guild_id, None);
+    }
+
+    #[test]
+    fn reaction_payloads() {
+        let add: MessageReactionAdd = serde_json::from_str(
+            r#"{
+                "user_id": "42",
+                "channel_id": "2",
+                "message_id": "3",
+                "guild_id": "4",
+                "member": { "roles": [], "deaf": false, "mute": false },
+                "emoji": { "id": null, "name": "🔥" },
+                "burst": false,
+                "type": 0
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(add.user_id.get(), 42);
+        assert_eq!(add.emoji.name.as_deref(), Some("🔥"));
+        assert!(add.member.is_some());
+        assert_eq!(add.message_author_id, None);
+
+        let remove: MessageReactionRemove = serde_json::from_str(
+            r#"{
+                "user_id": "42",
+                "channel_id": "2",
+                "message_id": "3",
+                "emoji": { "id": "417719834621489152", "name": "ultra_daruma" },
+                "burst": true,
+                "type": 1
+            }"#,
+        )
+        .unwrap();
+        assert!(remove.burst);
+        assert!(remove.guild_id.is_none());
     }
 }

@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 axis-core.workspace = true
+axis-events.workspace = true
 axis-gateway.workspace = true
 axis-model.workspace = true
 axis-rest.workspace = true

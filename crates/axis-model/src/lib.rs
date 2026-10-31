@@ -114,24 +114,35 @@ macro_rules! api_enum {
     };
 }
 
+pub mod application;
+pub mod audit_log;
 pub mod channel;
 pub mod emoji;
 pub mod guild;
+pub mod interaction;
 pub mod member;
 pub mod message;
+pub mod ready;
 pub mod role;
 pub mod user;
 
+pub use application::{Application, PartialApplication};
+pub use audit_log::{AuditEntryInfo, AuditLogAction, AuditLogChange, AuditLogEntry};
 pub use channel::{Channel, ChannelType, OverwriteType, PermissionOverwrite, VideoQualityMode};
 pub use emoji::Emoji;
 pub use guild::{
-    DefaultMessageNotificationLevel, ExplicitContentFilter, Guild, MfaLevel, NsfwLevel,
-    PremiumTier, VerificationLevel,
+    DefaultMessageNotificationLevel, ExplicitContentFilter, Guild, GuildCreate, MfaLevel,
+    NsfwLevel, PremiumTier, UnavailableGuild, VerificationLevel,
 };
-pub use member::Member;
+pub use interaction::{
+    CommandData, CommandDataOption, CommandType, Interaction, InteractionType, ResolvedData,
+};
+pub use member::{Member, MemberAdd, MemberRemove, MemberUpdate};
 pub use message::{
     Attachment, Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedImage, EmbedThumbnail, Message,
-    MessageFlags, MessageReference, MessageType, Reaction,
+    MessageDelete, MessageDeleteBulk, MessageFlags, MessageReactionAdd, MessageReactionRemove,
+    MessageReference, MessageType, PartialMessage, Reaction,
 };
-pub use role::{Role, RoleColors};
+pub use ready::Ready;
+pub use role::{GuildRoleChange, GuildRoleDelete, Role, RoleColors};
 pub use user::{PremiumType, User, UserFlags};

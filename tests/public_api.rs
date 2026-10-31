@@ -123,3 +123,37 @@ async fn rest_validation_runs_before_network() {
         .expect_err("empty message must be rejected locally");
     assert!(error.to_string().contains("content or at least one embed"));
 }
+
+#[tokio::test]
+async fn events_parse_and_dispatch_through_facade() {
+    // The Phase 4 flow: a raw gateway dispatch parses into a typed Event
+    // and reaches the registered handler.
+    let received = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+
+    let mut dispatcher = Dispatcher::new();
+    let sink = std::sync::Arc::clone(&received);
+    dispatcher.on_message_create(move |message| {
+        let sink = std::sync::Arc::clone(&sink);
+        async move {
+            sink.lock()
+                .unwrap()
+                .push(format!("{}:{}", message.author.username, message.content));
+            Ok(())
+        }
+    });
+
+    let event = Event::parse(
+        "MESSAGE_CREATE",
+        serde_json::json!({
+            "id": "1000", "channel_id": "7",
+            "author": { "id": "42", "username": "Nelly", "discriminator": "0" },
+            "content": "hello", "timestamp": "2022-09-22T14:00:00.436000+00:00",
+            "tts": false, "mention_everyone": false, "mentions": [],
+            "mention_roles": [], "attachments": [], "embeds": [], "pinned": false, "type": 0
+        }),
+    )
+    .unwrap();
+
+    dispatcher.dispatch(event).await.unwrap();
+    assert_eq!(*received.lock().unwrap(), vec!["Nelly:hello".to_owned()]);
+}

@@ -1,20 +1,50 @@
 //! # axis-events
 //!
-//! Flexible asynchronous event dispatch for the Axis Discord library.
+//! Typed event parsing and asynchronous handler dispatch for the Axis
+//! Discord library.
 //!
-//! ## Planned responsibilities (Phase 4)
+//! Gateway dispatches arrive from [`axis_gateway`] as raw payloads; this
+//! crate parses them into the typed [`Event`] enum (models from
+//! `axis-model`) and routes them to handlers registered on a
+//! [`Dispatcher`]:
 //!
-//! - Parsing raw gateway payloads into typed models.
-//! - An event enum covering `MessageCreate`, `MessageUpdate`,
-//!   `MessageDelete`, member join/leave/update, guild/channel/role
-//!   lifecycle events, `InteractionCreate`, and reaction events.
-//! - Handler registration with an ergonomic public API (the
-//!   `client.on_message_create(|ctx, message| ...)` style from the README's
-//!   design target), preserving Rust type safety.
-//! - Handler concurrency model: handlers run as async tasks with
-//!   predictable cancellation on shutdown.
+//! ```
+//! use axis_core::{AxisError, Result};
+//! use axis_events::{Dispatcher, Event};
 //!
-//! ## Status
+//! # fn demo() -> Dispatcher {
+//! let mut dispatcher = Dispatcher::new();
+//! dispatcher
+//!     .on_message_create(|message| async move {
+//!         if message.content == "!hello" {
+//!             tracing::info!("hello from {}", message.author.username);
+//!         }
+//!         Ok(())
+//!     })
+//!     .on_any(|event| async move {
+//!         tracing::trace!(event = ?std::mem::discriminant(&event), "event");
+//!         drop(event);
+//!         Ok(())
+//!     });
+//! # dispatcher
+//! # }
+//! ```
 //!
-//! Not yet implemented. This crate intentionally contains no APIs yet —
-//! see the repository README and `docs/ARCHITECTURE.md` for the plan.
+//! ## Semantics
+//!
+//! - Typed handlers run in registration order per event; the catch-all
+//!   (`on_any`) runs first.
+//! - Handler errors stop later handlers for that event and are returned
+//!   from [`Dispatcher::dispatch`]; the [`Dispatcher::run`] loop logs them
+//!   and keeps the bot alive.
+//! - Event kinds Axis does not model yet surface as [`Event::Unknown`]
+//!   with the raw payload instead of failing — register `on_unknown` to
+//!   observe them.
+//! - Gateway stream errors are fatal and end [`Dispatcher::run`] with the
+//!   error; parse failures for known kinds are logged and skipped.
+
+pub mod dispatcher;
+pub mod event;
+
+pub use dispatcher::Dispatcher;
+pub use event::Event;

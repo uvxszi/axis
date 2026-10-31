@@ -32,6 +32,7 @@ name = "axis"
 version = "0.1.0"
 dependencies = [
  "axis-core",
+ "axis-events",
  "axis-gateway",
  "axis-model",
  "axis-rest",
@@ -56,6 +57,16 @@ dependencies = [
 [[package]]
 name = "axis-events"
 version = "0.1.0"
+dependencies = [
+ "axis-core",
+ "axis-gateway",
+ "axis-model",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "axis-gateway"

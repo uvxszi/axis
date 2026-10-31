@@ -18,18 +18,24 @@
 //! | [`model`] | `axis-model` | Discord data models |
 //! | [`rest`] | `axis-rest` | Asynchronous REST client |
 //! | [`gateway`] | `axis-gateway` | Gateway WebSocket shards |
+//! | [`events`] | `axis-events` | Typed event parsing + dispatch |
 //!
-//! The event system (`axis-events`) and command framework
-//! (`axis-commands`) are separate crates that will be re-exported here as
-//! they are implemented; see the README and `docs/ARCHITECTURE.md` for the
-//! roadmap.
+//! The command framework (`axis-commands`) is a separate crate that will
+//! be re-exported here once implemented; see the README and
+//! `docs/ARCHITECTURE.md` for the roadmap.
 //!
 //! ## Status
 //!
-//! Phases 1 (foundation), 2 (REST), and 3 (gateway) are implemented: core
-//! types, the error system, data models, a rate-limit-aware REST client,
-//! and a reconnecting/resuming gateway shard. Typed event parsing and the
-//! command framework arrive in later phases.
+//! Phases 1 (foundation), 2 (REST), 3 (gateway), and 4 (models + events)
+//! are implemented: core types, the error system, data models, a
+//! rate-limit-aware REST client, a reconnecting/resuming gateway shard,
+//! and typed event parsing with a handler dispatcher. The command
+//! framework arrives in Phase 5.
+
+pub mod events {
+    //! Typed event parsing and asynchronous handler dispatch.
+    pub use axis_events::*;
+}
 
 pub mod gateway {
     //! Discord Gateway (WebSocket) shards.
@@ -96,11 +102,12 @@ pub mod prelude {
             InternalError, InvalidDataError, PermissionError, RateLimitError, Result,
             SerializationError,
         },
+        events::{Dispatcher, Event},
         gateway::{EventStream, Shard, ShardBuilder, ShardEvent},
         id::{
-            ApplicationId, AutoModRuleId, ChannelId, EmojiId, GenericId, GuildId, Id,
-            IntegrationId, InteractionId, MessageId, RoleId, ScheduledEventId, StickerId, UserId,
-            WebhookId, marker,
+            ApplicationCommandId, ApplicationId, AuditLogEntryId, AutoModRuleId, ChannelId,
+            EmojiId, GenericId, GuildId, Id, IntegrationId, InteractionId, MessageId, RoleId,
+            ScheduledEventId, StickerId, UserId, WebhookId, marker,
         },
         intents::GatewayIntents,
         log,

@@ -2,9 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use axis_core::{ApplicationId, ChannelId, GuildId, UserId};
+use axis_core::{ApplicationId, ChannelId, GuildId, Timestamp, UserId};
 
-use crate::{emoji::Emoji, role::Role};
+use crate::{channel::Channel, emoji::Emoji, member::Member, role::Role};
 
 api_enum! {
     /// Verification level required for a guild's members.
@@ -147,6 +147,48 @@ pub struct Guild {
     pub safety_alerts_channel_id: Option<ChannelId>,
 }
 
+/// A guild that is (temporarily) unavailable, as sent in READY and
+/// `GUILD_DELETE`.
+///
+/// `unavailable` is `Some(true)` for outages; in `GUILD_DELETE` the field
+/// is absent when the bot left or was removed from the guild.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UnavailableGuild {
+    /// The guild ID.
+    pub id: GuildId,
+    /// Whether the guild is merely unavailable (outage) rather than gone.
+    pub unavailable: Option<bool>,
+}
+
+/// The `GUILD_CREATE` payload: a standard guild object with connection
+/// extras flattened in.
+///
+/// Depending on the bot's intents and the guild's size, `members` and
+/// `presences` may contain only a subset of the guild (the docs spell out
+/// the limits); other embedded collections (`voice_states`, `presences`,
+/// `stage_instances`, `guild_scheduled_events`, `soundboard_sounds`) are
+/// not modeled yet and are ignored on deserialization.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GuildCreate {
+    /// The guild fields, flattened into the same payload object.
+    #[serde(flatten)]
+    pub guild: Guild,
+    /// When the bot's user joined the guild.
+    pub joined_at: Option<Timestamp>,
+    /// Whether the guild is considered "large".
+    pub large: Option<bool>,
+    /// Whether the guild is currently unavailable (outage recovery).
+    pub unavailable: Option<bool>,
+    /// The member count at dispatch time.
+    pub member_count: Option<u64>,
+    /// The guild's members, when Discord included them.
+    pub members: Option<Vec<Member>>,
+    /// The guild's channels, when Discord included them.
+    pub channels: Option<Vec<Channel>>,
+    /// Active threads the bot can view, when Discord included them.
+    pub threads: Option<Vec<Channel>>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,5 +277,55 @@ mod tests {
         let json = serde_json::to_string(&guild).unwrap();
         let reparsed: Guild = serde_json::from_str(&json).unwrap();
         assert_eq!(reparsed, guild);
+    }
+
+    #[test]
+    fn guild_create_flattens_guild_fields() {
+        // GUILD_CREATE embeds the guild object plus connection extras.
+        let create: GuildCreate = serde_json::from_str(
+            r#"{
+                "id": "290926798999268355",
+                "name": "Mason's Server",
+                "owner_id": "87616711559942144",
+                "afk_timeout": 300,
+                "verification_level": 0,
+                "default_message_notifications": 0,
+                "explicit_content_filter": 0,
+                "roles": [],
+                "emojis": [],
+                "features": [],
+                "mfa_level": 0,
+                "premium_tier": 0,
+                "preferred_locale": "en-US",
+                "nsfw_level": 0,
+                "premium_progress_bar_enabled": false,
+                "joined_at": "2015-04-26T06:26:56.936000+00:00",
+                "large": false,
+                "member_count": 2,
+                "members": [],
+                "channels": [
+                    { "id": "417722298349095947", "type": 0, "name": "general" }
+                ]
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(create.guild.name, "Mason's Server");
+        assert_eq!(create.member_count, Some(2));
+        assert_eq!(create.large, Some(false));
+        assert_eq!(create.channels.as_ref().unwrap().len(), 1);
+        assert_eq!(
+            create.joined_at.as_ref().unwrap().as_datetime().year(),
+            2015
+        );
+    }
+
+    #[test]
+    fn unavailable_guild() {
+        let g: UnavailableGuild =
+            serde_json::from_str(r#"{ "id": "5", "unavailable": true }"#).unwrap();
+        assert_eq!(g.unavailable, Some(true));
+        // GUILD_DELETE after a kick: `unavailable` absent.
+        let g: UnavailableGuild = serde_json::from_str(r#"{ "id": "5" }"#).unwrap();
+        assert_eq!(g.unavailable, None);
     }
 }

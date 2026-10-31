@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use axis_core::{Permissions, RoleId};
+use axis_core::{GuildId, Permissions, RoleId};
 
 /// A guild role.
 ///
@@ -52,6 +52,25 @@ impl Role {
     pub fn mention(&self) -> String {
         format!("<@&{}>", self.id)
     }
+}
+
+/// A role creation or update notification (`GUILD_ROLE_CREATE` /
+/// `GUILD_ROLE_UPDATE`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GuildRoleChange {
+    /// The guild the role belongs to.
+    pub guild_id: GuildId,
+    /// The created or updated role.
+    pub role: Role,
+}
+
+/// A role deletion notification (`GUILD_ROLE_DELETE`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GuildRoleDelete {
+    /// The guild the role belonged to.
+    pub guild_id: GuildId,
+    /// The deleted role's ID.
+    pub role_id: RoleId,
 }
 
 #[cfg(test)]
@@ -110,6 +129,29 @@ mod tests {
         let reparsed: Role = serde_json::from_str(&json).unwrap();
         assert_eq!(reparsed, role);
         assert_eq!(role.mention(), "<@&41771983423143937>");
+    }
+
+    #[test]
+    fn role_change_payloads() {
+        let change: GuildRoleChange = serde_json::from_str(
+            r#"{
+                "guild_id": "290926798999268355",
+                "role": {
+                    "id": "41771983423143937", "name": "mods", "color": 0,
+                    "colors": { "primary_color": 0 }, "hoist": false, "position": 1,
+                    "permissions": "40", "managed": false, "mentionable": true
+                }
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(change.guild_id.get(), 290_926_798_999_268_355);
+        assert_eq!(change.role.name, "mods");
+
+        let delete: GuildRoleDelete = serde_json::from_str(
+            r#"{ "guild_id": "290926798999268355", "role_id": "41771983423143937" }"#,
+        )
+        .unwrap();
+        assert_eq!(delete.role_id.get(), 41_771_983_423_143_937);
     }
 
     #[test]

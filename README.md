@@ -12,13 +12,13 @@ Axis is under active development and follows a phased plan (see [docs/ARCHITECTU
 |---|---|---|
 | Foundation: IDs, timestamps, intents, permissions, errors, logging | [`axis-core`](crates/axis-core) | ✅ Phase 1 |
 | Data models | [`axis-model`](crates/axis-model) | ✅ REST-surface models; expands in Phase 4 |
-| Facade + prelude | [`axis`](crates/axis) | ✅ Phase 1–3 |
+| Facade + prelude | [`axis`](crates/axis) | ✅ Phase 1–4 |
 | REST client, rate limits | [`axis-rest`](crates/axis-rest) | ✅ Phase 2 |
 | Gateway (WebSocket) shards | [`axis-gateway`](crates/axis-gateway) | ✅ Phase 3 |
-| Event system | [`axis-events`](crates/axis-events) | ⏳ Phase 4 |
+| Event system | [`axis-events`](crates/axis-events) | ✅ Phase 4 |
 | Command framework | [`axis-commands`](crates/axis-commands) | ⏳ Phase 5 |
 
-> The `Client` API shown below is the **design target** for Phases 4–6 (it needs the event system). The layers underneath it — REST `Http` (Phase 2) and gateway `Shard` (Phase 3) — **are implemented and tested**.
+> The `Client` API shown below is the **design target** for Phases 5–6 (it ties the layers together). Everything underneath it — REST `Http` (Phase 2), gateway `Shard` (Phase 3), and typed events with a dispatcher (Phase 4) — **is implemented and tested**.
 
 ```rust,ignore
 use axis::prelude::*;
@@ -54,6 +54,40 @@ Axis is not published to crates.io yet. Once hosted in a git repository:
 [dependencies]
 axis = { git = "https://example.com/axis" }
 ```
+
+## What Phase 4 provides — models and events
+
+Raw gateway dispatches become typed events with a handler dispatcher:
+
+```rust
+use axis::prelude::*;
+
+let mut dispatcher = Dispatcher::new();
+dispatcher
+    .on_message_create(|message| async move {
+        if message.content == "!hello" {
+            tracing::info!("hello from {}", message.author.username);
+        }
+        Ok(())
+    })
+    .on_reaction_add(|reaction| async move {
+        tracing::info!(emoji = ?reaction.emoji.name, "reaction added");
+        Ok(())
+    })
+    .on_any(|event| async move {
+        tracing::trace!(event = ?std::mem::discriminant(&event), "event");
+        drop(event);
+        Ok(())
+    });
+
+// Feed it a shard's event stream (runs until the stream ends):
+// dispatcher.run(shard_events).await?;
+```
+
+- **Typed event enum** — `Ready`, message lifecycle (`MessageCreate`, partial `MessageUpdate`, deletes, bulk deletes), reactions, member join/update/leave, guild create/update/delete, channel lifecycle, roles, and `InteractionCreate` — every payload verified against the official event documentation.
+- **Unknown events never break the bot**: dispatch kinds Axis does not model yet surface as `Event::Unknown { kind, data }` (register `on_unknown` to observe them); parse failures on known kinds are logged and skipped; handler errors stop later handlers for that event but never the run loop.
+- **`Dispatcher`** — typed per-event registration in registration order, a catch-all `on_any`, an `on_unknown` hook, and a `run` loop that consumes a shard's event stream (stream errors are the only fatal ones).
+- **Model expansion** — `PartialMessage`, delete/bulk-delete and reaction payloads, flat member-event payloads (`MemberAdd`/`MemberUpdate`/`MemberRemove`), `GuildCreate` with embedded channels/members, `UnavailableGuild`, `Ready`, `Application`/`PartialApplication`, `Interaction` (with command data decoding groundwork for Phase 5), and the complete `AuditLogEntry` with all ~75 documented action types.
 
 ## What Phase 1 provides
 

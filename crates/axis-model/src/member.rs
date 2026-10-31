@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use axis_core::{Permissions, RoleId, Timestamp};
+use axis_core::{GuildId, Permissions, RoleId, Timestamp};
 
 use crate::user::User;
 
@@ -41,6 +41,36 @@ pub struct Member {
     pub permissions: Option<Permissions>,
     /// When the member's timeout will expire, if timed out.
     pub communication_disabled_until: Option<Timestamp>,
+}
+
+/// A member join notification (`GUILD_MEMBER_ADD`): the member object
+/// with the guild it joined, flat in the payload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemberAdd {
+    /// The guild the member joined.
+    pub guild_id: GuildId,
+    /// The member fields, flattened into the same payload object.
+    #[serde(flatten)]
+    pub member: Member,
+}
+
+/// A member update notification (`GUILD_MEMBER_UPDATE`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemberUpdate {
+    /// The guild the member belongs to.
+    pub guild_id: GuildId,
+    /// The updated member fields, flattened into the same payload object.
+    #[serde(flatten)]
+    pub member: Member,
+}
+
+/// A member leave notification (`GUILD_MEMBER_REMOVE`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemberRemove {
+    /// The guild the member left.
+    pub guild_id: GuildId,
+    /// The user that left or was removed.
+    pub user: User,
 }
 
 #[cfg(test)]
@@ -97,5 +127,45 @@ mod tests {
         let json = serde_json::to_string(&member).unwrap();
         let reparsed: Member = serde_json::from_str(&json).unwrap();
         assert_eq!(reparsed, member);
+    }
+
+    #[test]
+    fn member_event_payloads_are_flat() {
+        // GUILD_MEMBER_ADD/UPDATE put guild_id at the top level of the
+        // member object, per the docs.
+        let add: MemberAdd = serde_json::from_str(
+            r#"{
+                "guild_id": "290926798999268355",
+                "user": { "id": "80351110224678912", "username": "Nelly", "discriminator": "0" },
+                "roles": [],
+                "deaf": false,
+                "mute": false,
+                "joined_at": "2015-04-26T06:26:56.936000+00:00"
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(add.guild_id.get(), 290_926_798_999_268_355);
+        assert_eq!(add.member.user.as_ref().unwrap().username, "Nelly");
+
+        let update: MemberUpdate = serde_json::from_str(
+            r#"{
+                "guild_id": "290926798999268355",
+                "user": { "id": "80351110224678912", "username": "Nelly", "discriminator": "0" },
+                "roles": ["41771983423143937"],
+                "deaf": false,
+                "mute": false
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(update.member.roles.len(), 1);
+
+        let remove: MemberRemove = serde_json::from_str(
+            r#"{
+                "guild_id": "290926798999268355",
+                "user": { "id": "80351110224678912", "username": "Nelly", "discriminator": "0" }
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(remove.user.id.get(), 80_351_110_224_678_912);
     }
 }
