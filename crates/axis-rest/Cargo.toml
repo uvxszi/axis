@@ -1,0 +1,13 @@
+[package]
+name = "axis-rest"
+description = "Asynchronous Discord REST API client for the Axis Discord library"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Dependencies are added when the REST phase starts (Phase 2): reqwest,
+# tokio, axis-core, axis-model.
+
+[lints]
+workspace = true

@@ -1,0 +1,42 @@
+[workspace]
+resolver = "2"
+members = ["crates/*", "tests"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+# Internal crates
+axis-core = { path = "crates/axis-core", version = "0.1.0" }
+axis-model = { path = "crates/axis-model", version = "0.1.0" }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Errors
+thiserror = "2"
+
+# Bitfield types (gateway intents, permissions, user flags)
+bitflags = "2"
+
+# RFC 3339 timestamps as exchanged with the Discord API
+time = { version = "0.3", features = ["serde-well-known"] }
+
+# Async runtime (adopted from Phase 2 onward; declared here once)
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal"] }
+
+# Structured logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"

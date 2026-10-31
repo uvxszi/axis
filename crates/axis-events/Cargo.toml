@@ -1,0 +1,13 @@
+[package]
+name = "axis-events"
+description = "Asynchronous event dispatch system for the Axis Discord library"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Dependencies are added when the events phase starts (Phase 4): axis-core,
+# axis-model, axis-gateway.
+
+[lints]
+workspace = true

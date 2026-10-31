@@ -1,0 +1,18 @@
+# Build artifacts
+/target
+
+# Environment / secrets (never commit tokens)
+.env
+.env.*
+
+# Editor / OS noise
+.idea/
+.vscode/
+*.swp
+*.rs.bk
+
+# Coverage / profiling output
+*.lcov
+/coverage
+flamegraph.svg
+perf.data*

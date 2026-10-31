@@ -1,0 +1,23 @@
+[package]
+name = "axis-integration-tests"
+description = "Cross-crate integration tests exercising Axis's public API surface"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# The test targets live at the package root (see [[test]] below) so the
+# directory layout matches the repository plan: `tests/*.rs`.
+autotests = false
+
+[dependencies]
+axis = { path = "../crates/axis" }
+serde_json.workspace = true
+
+[[test]]
+name = "public_api"
+path = "public_api.rs"
+
+[lints]
+workspace = true

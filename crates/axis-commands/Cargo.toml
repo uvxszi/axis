@@ -1,0 +1,13 @@
+[package]
+name = "axis-commands"
+description = "Command framework (slash commands and interactions) for the Axis Discord library"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Dependencies are added when the commands phase starts (Phase 5):
+# axis-core, axis-model, axis-rest, axis-events.
+
+[lints]
+workspace = true

@@ -1,0 +1,18 @@
+[package]
+name = "axis-model"
+description = "Strongly typed Discord data models for the Axis Discord library"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+axis-core.workspace = true
+bitflags.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

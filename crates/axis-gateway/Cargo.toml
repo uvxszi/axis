@@ -1,0 +1,13 @@
+[package]
+name = "axis-gateway"
+description = "Discord Gateway (WebSocket) client for the Axis Discord library"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Dependencies are added when the gateway phase starts (Phase 3): tokio,
+# a WebSocket implementation, futures utilities, axis-core, axis-model.
+
+[lints]
+workspace = true
