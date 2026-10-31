@@ -386,7 +386,8 @@ impl Command {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Default)]
+// Clone is cheap: handlers are Arcs, so a cloned registry shares them.
+#[derive(Default, Clone)]
 pub struct CommandRegistry {
     commands: Vec<Command>,
 }

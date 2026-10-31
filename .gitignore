@@ -1,5 +1,7 @@
 # Build artifacts
 /target
+# The desktop app has its own workspace and target directory.
+/app/target
 
 # Environment / secrets (never commit tokens)
 .env

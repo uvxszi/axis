@@ -1,6 +1,10 @@
 [workspace]
 resolver = "2"
 members = ["crates/*", "tests", "examples"]
+# `app/` (the desktop bot host) is deliberately its own workspace: it
+# pulls in the GUI stack (eframe), which needs system windowing libraries
+# that the library CI does not require. Build it with
+# `cd app && cargo build --release`.
 
 [workspace.package]
 version = "0.1.0"

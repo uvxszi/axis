@@ -69,6 +69,14 @@ pub enum Event {
     /// `INTERACTION_CREATE`: command invocations, component presses,
     /// autocomplete requests, and modal submissions.
     InteractionCreate(Interaction),
+    /// The shard lost its connection and is re-establishing it. The happy
+    /// paths surface as [`Event::Ready`] / [`Event::Resumed`]; this event
+    /// covers the gap between a disconnect and the next READY so
+    /// applications can show reconnect state.
+    Reconnecting {
+        /// The close code the server sent, when the disconnect carried one.
+        close_code: Option<u16>,
+    },
     /// An event kind this version of Axis does not model yet. The raw
     /// payload is preserved; forward it (or ignore it) as appropriate.
     Unknown {

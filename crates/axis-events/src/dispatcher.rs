@@ -221,6 +221,9 @@ impl Dispatcher {
                     handler(kind.clone(), data.clone()).await?;
                 }
             }
+            // Lifecycle-only event: typed handlers do not apply; on_any
+            // observers already ran above.
+            Event::Reconnecting { .. } => {}
         }
         Ok(())
     }
@@ -247,10 +250,19 @@ impl Dispatcher {
                         tracing::error!(kind = %kind, %error, "failed to parse gateway event; skipping");
                     }
                 },
+                Ok(ShardEvent::Reconnecting { close_code }) => {
+                    // Connected/Resumed have dispatch equivalents (READY,
+                    // RESUMED); Reconnecting has none, so it is surfaced.
+                    if let Err(error) = self
+                        .dispatch(Event::Reconnecting { close_code })
+                        .await
+                    {
+                        tracing::error!(%error, "event handler failed");
+                    }
+                }
                 Ok(_) => {
-                    // Shard lifecycle signals (Connected / Resumed /
-                    // Reconnecting) are surfaced by the gateway itself;
-                    // dispatch-level equivalents arrive as READY/RESUMED.
+                    // Shard lifecycle signals (Connected / Resumed) arrive
+                    // as READY/RESUMED dispatches.
                 }
                 Err(error) => return Err(error),
             }
