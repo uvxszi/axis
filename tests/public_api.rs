@@ -96,3 +96,30 @@ fn timestamps_roundtrip_through_facade() {
     assert_eq!(parsed, ts);
     assert_eq!(Timestamp::UNIX_EPOCH.as_unix_millis(), 0);
 }
+
+#[test]
+fn rest_client_builds_through_facade() {
+    // The Phase 2 REST surface: builder never contacts Discord on build.
+    let http = Http::builder(Token::new("Bot abc.def".to_owned()))
+        .build()
+        .unwrap();
+    // Builders are created without sending anything.
+    let _builder = http
+        .create_message(ChannelId::new(1))
+        .content("not sent yet");
+}
+
+#[tokio::test]
+async fn rest_validation_runs_before_network() {
+    // Pointed at a port where nothing listens: local validation must fail
+    // before any connection is attempted.
+    let http = Http::builder(Token::new("x".to_owned()))
+        .api_base("http://127.0.0.1:9")
+        .build()
+        .unwrap();
+    let error = http
+        .create_message(ChannelId::new(1))
+        .await
+        .expect_err("empty message must be rejected locally");
+    assert!(error.to_string().contains("content or at least one embed"));
+}

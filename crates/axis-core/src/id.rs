@@ -83,6 +83,11 @@ pub mod marker {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct UserMarker;
 
+    /// Marker for IDs that may be either a role ID or a user ID, depending
+    /// on context (for example, permission overwrite targets).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct GenericMarker;
+
     /// Marker for webhook IDs.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct WebhookMarker;
@@ -202,6 +207,8 @@ impl<'de, T> Deserialize<'de> for Id<T> {
 #[error("invalid snowflake ID")]
 pub struct ParseIdError(#[from] core::num::ParseIntError);
 
+/// An ID that is either a role ID or a user ID, depending on context.
+pub type GenericId = Id<marker::GenericMarker>;
 /// An ID of a user.
 pub type UserId = Id<marker::UserMarker>;
 /// An ID of a guild.

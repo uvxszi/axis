@@ -10,8 +10,8 @@ updated as phases land.
 |---|---|---|
 | `axis-core` | Typed snowflake IDs, timestamps, gateway intents, permissions, the unified error system, credential redaction, optional logging setup | — |
 | `axis-model` | Strongly typed Discord data models | `axis-core` |
-| `axis` | Facade: re-exports the pieces applications touch, provides the `prelude` | `axis-core`, `axis-model` |
-| `axis-rest` | Async REST client: auth, rate limits, typed request builders *(Phase 2)* | `axis-core`, `axis-model` |
+| `axis` | Facade: re-exports the pieces applications touch, provides the `prelude` | `axis-core`, `axis-model`, `axis-rest` |
+| `axis-rest` | Async REST client: auth, rate limits, typed request builders | `axis-core`, `axis-model` |
 | `axis-gateway` | Gateway WebSocket client: identify, heartbeat, resume, sharding *(Phase 3)* | `axis-core`, `axis-model`, `axis-rest` (API version / URL negotiation) |
 | `axis-events` | Event parsing and asynchronous handler dispatch *(Phase 4)* | `axis-core`, `axis-model`, `axis-gateway` |
 | `axis-commands` | Slash-command framework on top of interactions *(Phase 5)* | `axis-core`, `axis-model`, `axis-rest`, `axis-events` |
@@ -139,31 +139,92 @@ come later, but the core stays storage-free).
 | `bitflags` | Battle-tested bitset codegen for intents/permissions/flags |
 | `time` | RFC 3339 timestamps |
 | `tracing` / `tracing-subscriber` | Structured logging; subscriber only for the opt-in helper |
-| `tokio` | Declared in `[workspace.dependencies]` for Phase 2+ so versions are pinned centrally |
+| `tokio` | Async runtime; pinned centrally in `[workspace.dependencies]` |
 
-Deliberately absent so far: `reqwest`, WebSocket libraries, `url`, `bytes`,
-database drivers — each arrives with the phase that needs it.
+### Added in Phase 2 (REST)
+
+| Dependency | Why |
+|---|---|
+| `reqwest` (json + rustls-tls, no default features) | Async HTTP; rustls avoids a system OpenSSL dependency |
+| `mockito` (dev-dependency) | Local mock HTTP server for pipeline tests |
+
+Deliberately absent: WebSocket libraries (`url`, `bytes`, `futures` remain
+unexposed), database drivers — each arrives with the phase that needs it.
+
+## Phase 2 design decisions (REST)
+
+### 10. Rate limiting: learned buckets, keyed by (hash, major parameter)
+
+`RateLimiter` follows the documented model rather than hardcoding limits:
+the first request on a route shape always goes through (the bucket is
+unknown); every response teaches the limiter the route's `X-RateLimit-Bucket`
+hash and window state (`Remaining`, `Reset-After`). State is keyed by
+`(bucket hash, major parameter)` so `/channels/123` and `/channels/456`
+never share a limit. Waiting happens outside the lock (compute wait under
+the mutex, sleep, re-check), so slow waiters cannot stall other tasks.
+
+429 handling: the body's `retry_after` is authoritative, falling back to the
+`Retry-After` header and a conservative 1s default (Cloudflare returns
+HTML). Global 429s block all routes until expiry. Retries are bounded by
+`max_rate_limit_retries` (default 3), after which a `RateLimitError` with
+the parsed context surfaces — never an infinite retry loop.
+
+### 11. Bounded, method-aware transient retries
+
+Network errors and 5xx responses retry with exponential backoff (500ms
+doubling, capped at 5s) — but **only for idempotent methods**
+(`GET`/`PUT`/`DELETE`). A `POST` that hits a 500 fails immediately: retrying
+message sends risks silent duplicates. `max_retries` (default 3) bounds the
+loop. 401 stops immediately with `AuthError::Invalid`, per Discord's
+guidance to stop using an invalid token.
+
+### 12. Awaitable builders via `IntoFuture`
+
+Every endpoint is a method on `Http` returning a typed builder; builders
+implement `IntoFuture` (boxing one future per request — negligible next to
+the HTTP round trip), so `http.create_message(id).content("hi").await`
+matches the README's design target. Local validation happens inside
+`execute` **before** any network call: content length (2000 chars),
+non-empty message body, bulk-delete size (2–100), slowmode bounds
+(≤ 21600s), timeout direction, and query-parameter exclusivity.
+
+### 13. Null-clearing semantics
+
+Edit endpoints that support explicit clearing (`EditMessage.content/embeds`,
+`EditMember.nick/timeout_until`) model "set" vs "clear" with
+`Option<Option<T>>`: outer `None` is skipped entirely, `Some(None)`
+serializes as `null` (Discord's "remove this field"), `Some(Some(v))` sets.
+
+### 14. Where permission errors live
+
+HTTP 403 maps to `HttpError` (status 403 + Discord's code/message), because
+Discord does not say *which* permission was missing. `PermissionError` with
+its `missing: Permissions` payload is reserved for local checks that know
+exactly what they require (the Phase 5 command framework's pre-checks).
 
 ## Roadmap
 
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Workspace, core types, error system, first model, docs | ✅ done |
-| 2 | REST: auth, HTTP client, rate limiting, message ops, mocked tests | next |
-| 3 | Gateway: connect, identify, heartbeat, resume, reconnect, event dispatch | ⏳ |
+| 2 | REST: auth, HTTP client, rate limiting, message/channel/guild/member/role/reaction ops, mocked tests | ✅ done |
+| 3 | Gateway: connect, identify, heartbeat, resume, reconnect, event dispatch | next |
 | 4 | Models expansion + event system + handlers | ⏳ |
 | 5 | Interactions and slash-command framework | ⏳ |
 | 6 | Examples, integration/long-run testing, docs polish | ⏳ |
 
 ## Testing strategy
 
-- Unit tests live next to the code (every module in `axis-core` and
-  `axis-model` has a `#[cfg(test)] mod tests`).
+- Unit tests live next to the code (every module in `axis-core`,
+  `axis-model`, and `axis-rest` has a `#[cfg(test)] mod tests`).
 - Documented values from the Discord spec are pinned as test constants
   (intent bits, permission bits, close codes, snowflake → timestamp
-  examples).
+  examples, message/channel/role payloads).
+- The REST pipeline is tested against a local mock HTTP server (`mockito`):
+  request shapes (method, path, headers, bodies, query strings), rate-limit
+  behavior (bucket waiting, bounded 429 retries, global limits), retry
+  rules (5xx on idempotent methods only), and error mapping (401/403/404/500).
 - Cross-crate behavior is tested through the facade in `tests/`
   (`axis-integration-tests`), which is how applications consume the library.
-- Phases 2+ add mocked HTTP responses (rate limits, error bodies) and mocked
-  gateway frames (heartbeat acks, close codes, resume flows) — live Discord
-  connections are never the only test path.
+- Phases 3+ add mocked gateway frames (heartbeat acks, close codes, resume
+  flows) — live Discord connections are never the only test path.

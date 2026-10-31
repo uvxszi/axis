@@ -11,14 +11,14 @@ Axis is under active development and follows a phased plan (see [docs/ARCHITECTU
 | Area | Crate | Status |
 |---|---|---|
 | Foundation: IDs, timestamps, intents, permissions, errors, logging | [`axis-core`](crates/axis-core) | ✅ Phase 1 |
-| Data models | [`axis-model`](crates/axis-model) | 🚧 Phase 1 started (`User`); expands in Phase 4 |
-| Facade + prelude | [`axis`](crates/axis) | ✅ Phase 1 |
-| REST client, rate limits | [`axis-rest`](crates/axis-rest) | ⏳ Phase 2 |
+| Data models | [`axis-model`](crates/axis-model) | ✅ REST-surface models (Phase 2); expands in Phase 4 |
+| Facade + prelude | [`axis`](crates/axis) | ✅ Phase 1–2 |
+| REST client, rate limits | [`axis-rest`](crates/axis-rest) | ✅ Phase 2 |
 | Gateway (WebSocket) client | [`axis-gateway`](crates/axis-gateway) | ⏳ Phase 3 |
 | Event system | [`axis-events`](crates/axis-events) | ⏳ Phase 4 |
 | Command framework | [`axis-commands`](crates/axis-commands) | ⏳ Phase 5 |
 
-> The `Client` API shown below is the **design target** for Phases 2–5, not working code yet. Phase 1 ships the workspace, core types, and the error system — everything is tested and compiling.
+> The `Client` API shown below is the **design target** for Phases 3–5 (it needs the gateway). The REST layer underneath it — `Http` — **is implemented and tested** (Phase 2).
 
 ```rust,ignore
 use axis::prelude::*;
@@ -55,7 +55,42 @@ Axis is not published to crates.io yet. Once hosted in a git repository:
 axis = { git = "https://example.com/axis" }
 ```
 
-Until the REST and Gateway phases land, depending on `axis` gives you the foundation crates only.
+## What Phase 2 provides — the REST layer
+
+The REST client is implemented and tested against a mock HTTP server:
+
+```rust
+use axis::prelude::*;
+
+#[tokio::main]
+async fn main() -> Result<(), AxisError> {
+    let http = Http::builder(Token::from_env("DISCORD_TOKEN")?).build()?;
+
+    // Awaitable, typed request builders:
+    let message = http
+        .create_message(ChannelId::new(123))
+        .content("Hello from Axis!")
+        .embeds(vec![Embed {
+            title: Some("Axis".into()),
+            description: Some("An independent Discord library".into()),
+            color: Some(0x5865F2),
+            ..Embed::default()
+        }])
+        .reply(MessageId::new(456))
+        .await?;
+
+    http.create_message(message.channel_id)
+        .content("Pong!")
+        .await?;
+    Ok(())
+}
+```
+
+- **25+ endpoints** behind typed builders: messages (create/edit/delete/get/list/bulk-delete with replies and embeds), channels (get/create/edit/delete, permission overwrites), guilds, members (get/kick/ban/unban/edit — including timeouts), roles (create/edit/delete), reactions (add/remove/clear with URL-encoded emoji).
+- **Rate limits handled properly**: bucket hashes learned from `X-RateLimit-*` headers and keyed by major parameter; exhausted buckets wait for their reset instead of hammering Discord; 429s are honored via the body's `retry_after` (with `Retry-After` header fallback for Cloudflare bodies) and retried a bounded number of times before surfacing `RateLimitError`.
+- **Bounded, safe retries**: network errors and 5xx retry with exponential backoff — only for idempotent methods (`GET`/`PUT`/`DELETE`), so a failed message send can never be silently duplicated. 401 stops immediately per Discord's guidance.
+- **Typed errors end to end**: `401 → AuthError`, `429 → RateLimitError` (after bounded retries), other statuses → `HttpError` with the Discord error code + message parsed from the body.
+- **Expanded models**: `Message`, `Channel`, `Guild`, `Member`, `Role`, `Embed` (and sub-structures), `Attachment`, `Reaction`, `Emoji`, plus the documented `ChannelType`/`MessageType` enums and `MessageFlags`.
 
 ## What Phase 1 provides
 

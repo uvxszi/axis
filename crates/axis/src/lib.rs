@@ -16,19 +16,20 @@
 //! |---|---|---|
 //! | [`error`], [`id`], [`intents`], [`permissions`], [`secret`], [`timestamp`], [`log`] | `axis-core` | Foundation types |
 //! | [`model`] | `axis-model` | Discord data models |
+//! | [`rest`] | `axis-rest` | Asynchronous REST client |
 //!
-//! The REST client (`axis-rest`), gateway (`axis-gateway`), event system
-//! (`axis-events`), and command framework (`axis-commands`) are separate
-//! crates that will be re-exported here as they are implemented; see the
-//! README and `docs/ARCHITECTURE.md` for the roadmap.
+//! The gateway (`axis-gateway`), event system (`axis-events`), and command
+//! framework (`axis-commands`) are separate crates that will be re-exported
+//! here as they are implemented; see the README and `docs/ARCHITECTURE.md`
+//! for the roadmap.
 //!
 //! ## Status
 //!
-//! Phase 1 (foundation) is implemented: the workspace, core types, the
-//! error system, typed IDs, intents/permissions, and the first data model.
-//! The `Client`, REST layer, and gateway do not exist yet — examples that
-//! show a `Client` API are design targets for upcoming phases, not working
-//! code.
+//! Phases 1 (foundation) and 2 (REST) are implemented: core types, the
+//! error system, data models, and a rate-limit-aware REST client with
+//! typed request builders. The gateway (`Http` + WebSocket `Client`) and
+//! event system arrive in later phases — examples showing a full `Client`
+//! API are design targets for those phases, not working code.
 
 pub mod error {
     //! Unified error types.
@@ -60,6 +61,11 @@ pub mod permissions {
     pub use axis_core::permissions::*;
 }
 
+pub mod rest {
+    //! Asynchronous REST client for the Discord API.
+    pub use axis_rest::*;
+}
+
 pub mod secret {
     //! Redaction-safe credential wrappers.
     pub use axis_core::secret::*;
@@ -86,14 +92,19 @@ pub mod prelude {
             SerializationError,
         },
         id::{
-            ApplicationId, AutoModRuleId, ChannelId, EmojiId, GuildId, Id, IntegrationId,
-            InteractionId, MessageId, RoleId, ScheduledEventId, StickerId, UserId, WebhookId,
-            marker,
+            ApplicationId, AutoModRuleId, ChannelId, EmojiId, GenericId, GuildId, Id,
+            IntegrationId, InteractionId, MessageId, RoleId, ScheduledEventId, StickerId, UserId,
+            WebhookId, marker,
         },
         intents::GatewayIntents,
         log,
-        model::{PremiumType, User, UserFlags},
+        model::{
+            Attachment, Channel, ChannelType, Embed, EmbedField, Emoji, Guild, Member, Message,
+            MessageFlags, MessageReference, MessageType, PremiumType, Reaction, Role, User,
+            UserFlags,
+        },
         permissions::Permissions,
+        rest::{Http, HttpBuilder},
         secret::{Secret, Token},
         timestamp::Timestamp,
     };

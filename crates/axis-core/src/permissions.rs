@@ -139,6 +139,12 @@ impl Permissions {
     }
 }
 
+impl Default for Permissions {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
 impl core::fmt::Display for Permissions {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut first = true;

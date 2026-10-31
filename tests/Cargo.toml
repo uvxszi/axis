@@ -15,6 +15,9 @@ autotests = false
 axis = { path = "../crates/axis" }
 serde_json.workspace = true
 
+[dev-dependencies]
+tokio.workspace = true
+
 [[test]]
 name = "public_api"
 path = "public_api.rs"

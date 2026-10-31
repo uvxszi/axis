@@ -38,7 +38,7 @@ pub use crate::{
         SerializationError,
     },
     id::{
-        ApplicationId, AutoModRuleId, ChannelId, EmojiId, GuildId, Id, IntegrationId,
+        ApplicationId, AutoModRuleId, ChannelId, EmojiId, GenericId, GuildId, Id, IntegrationId,
         InteractionId, MessageId, RoleId, ScheduledEventId, StickerId, UserId, WebhookId, marker,
     },
     intents::GatewayIntents,
@@ -56,9 +56,9 @@ pub mod prelude {
             SerializationError,
         },
         id::{
-            ApplicationId, AutoModRuleId, ChannelId, EmojiId, GuildId, Id, IntegrationId,
-            InteractionId, MessageId, RoleId, ScheduledEventId, StickerId, UserId, WebhookId,
-            marker,
+            ApplicationId, AutoModRuleId, ChannelId, EmojiId, GenericId, GuildId, Id,
+            IntegrationId, InteractionId, MessageId, RoleId, ScheduledEventId, StickerId, UserId,
+            WebhookId, marker,
         },
         intents::GatewayIntents,
         permissions::Permissions,
