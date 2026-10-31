@@ -82,6 +82,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "axis-examples"
+version = "0.1.0"
+dependencies = [
+ "axis",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "axis-gateway"
 version = "0.1.0"
 dependencies = [
@@ -104,6 +114,7 @@ dependencies = [
  "mockito",
  "serde_json",
  "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]

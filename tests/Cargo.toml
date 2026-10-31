@@ -14,6 +14,7 @@ autotests = false
 [dependencies]
 axis = { path = "../crates/axis" }
 serde_json.workspace = true
+tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }
 
 [dev-dependencies]
 futures-util.workspace = true
@@ -23,6 +24,10 @@ tokio.workspace = true
 [[test]]
 name = "public_api"
 path = "public_api.rs"
+
+[[test]]
+name = "long_running"
+path = "long_running.rs"
 
 [lints]
 workspace = true

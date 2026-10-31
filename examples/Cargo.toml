@@ -1,0 +1,33 @@
+[package]
+name = "axis-examples"
+description = "Example bots for the Axis Discord library"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# The example binaries live at the package root (see [[bin]] below) so the
+# directory layout matches the repository plan: `examples/<name>.rs`.
+autobins = false
+
+[[bin]]
+name = "basic_bot"
+path = "basic_bot.rs"
+
+[[bin]]
+name = "event_handler"
+path = "event_handler.rs"
+
+[[bin]]
+name = "slash_commands"
+path = "slash_commands.rs"
+
+[dependencies]
+axis = { path = "../crates/axis" }
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

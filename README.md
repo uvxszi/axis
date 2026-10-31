@@ -247,16 +247,27 @@ async fn main() -> Result<(), AxisError> {
 - Privileged intents (`GUILD_PRESENCES`, `GUILD_MEMBERS`, `MESSAGE_CONTENT`) must be enabled in the Discord Developer Portal; the library surfaces Discord's close codes 4013/4014 instead of hiding them.
 - Axis is for bot/application accounts only. Automating normal user accounts violates Discord's Terms of Service and is not supported.
 
+## Documentation
+
+- [Getting started](docs/GETTING_STARTED.md) — install, authenticate,
+  quick start, then gateway, REST, events, commands, and error handling.
+- [Architecture](docs/ARCHITECTURE.md) — crate layout, design decisions,
+  roadmap.
+- [Examples](examples/README.md) — runnable bots: `basic_bot`,
+  `event_handler`, `slash_commands`.
+
 ## Development
 
 ```sh
-cargo check --workspace --all-targets   # compile everything
-cargo test --workspace                  # unit + integration tests
+cargo check --workspace --all-targets   # compile everything (incl. examples)
+cargo test --workspace                  # unit + integration + soak tests
 cargo fmt --all                         # formatting
 cargo clippy --workspace --all-targets  # lints
 ```
 
-Rust 1.85+ (edition 2024).
+Rust 1.85+ (edition 2024). CI runs all four on every push; the test suite
+is fully offline (mocked REST and gateway servers), so no Discord token is
+required to develop or contribute.
 
 ## License
 

@@ -218,7 +218,7 @@ exactly what they require (the Phase 5 command framework's pre-checks).
 | 3 | Gateway: connect, identify, heartbeat, resume, reconnect, event dispatch | ✅ done |
 | 4 | Models expansion + event system + handlers | ✅ done |
 | 5 | Interactions and slash-command framework | ✅ done |
-| 6 | Examples, integration/long-run testing, docs polish | next |
+| 6 | Examples, integration/long-run testing, docs polish | ✅ done |
 
 ## Testing strategy
 
@@ -383,3 +383,40 @@ and sufficient for the documented option kinds. Autocomplete providers
 receive the same `Invocation` and answer through the type-8 callback;
 requests without a focused option or provider are answered with empty
 choices rather than left hanging (the token dies if nothing responds).
+
+## Phase 6 design decisions (Integration)
+
+### 27. Examples are workspace members, not documentation snippets
+
+The three example bots (`basic_bot`, `event_handler`, `slash_commands`)
+are binaries of an `axis-examples` workspace member, so
+`cargo check --workspace` compiles them in every CI run — an example that
+drifts from the API fails the build exactly like library code. They use
+only the public facade surface, read credentials from the environment,
+and print actionable guidance when it is missing.
+
+### 28. Integration means both directions, under stress
+
+Phase 6's tests close the loop the earlier phases could only test one
+side of:
+
+- **Gateway drives REST**: a `Client` receives a message event and the
+  handler's REST call is verified on the wire (authorization header,
+  body) — the composition the library exists for.
+- **Soak**: ten consecutive reconnect cycles against a scripted gateway,
+  each closed with a resumable code. The server asserts, per cycle, that
+  the client's `Resume` carries the *exact* last sequence number — the
+  strongest available check that session state survives recycling. REST
+  calls run concurrently with the reconnect storm to prove the two
+  subsystems do not block each other.
+- Long-run behavior is bounded in CI (tens of seconds) but exercises the
+  same code paths an overnight bot would: repeated resume, sequence
+  continuity, and REST-under-churn.
+
+### 29. CI as the maturity floor
+
+`.github/workflows/ci.yml` runs `cargo fmt --check`, `cargo clippy
+--workspace --all-targets -- -D warnings`, and `cargo test --workspace`
+with warnings denied. The suite is fully offline (mockito for REST, local
+WebSocket servers for the gateway), so CI needs no Discord token and
+cannot flake on Discord's side.
