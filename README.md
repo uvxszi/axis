@@ -11,14 +11,14 @@ Axis is under active development and follows a phased plan (see [docs/ARCHITECTU
 | Area | Crate | Status |
 |---|---|---|
 | Foundation: IDs, timestamps, intents, permissions, errors, logging | [`axis-core`](crates/axis-core) | ✅ Phase 1 |
-| Data models | [`axis-model`](crates/axis-model) | ✅ REST-surface models (Phase 2); expands in Phase 4 |
-| Facade + prelude | [`axis`](crates/axis) | ✅ Phase 1–2 |
+| Data models | [`axis-model`](crates/axis-model) | ✅ REST-surface models; expands in Phase 4 |
+| Facade + prelude | [`axis`](crates/axis) | ✅ Phase 1–3 |
 | REST client, rate limits | [`axis-rest`](crates/axis-rest) | ✅ Phase 2 |
-| Gateway (WebSocket) client | [`axis-gateway`](crates/axis-gateway) | ⏳ Phase 3 |
+| Gateway (WebSocket) shards | [`axis-gateway`](crates/axis-gateway) | ✅ Phase 3 |
 | Event system | [`axis-events`](crates/axis-events) | ⏳ Phase 4 |
 | Command framework | [`axis-commands`](crates/axis-commands) | ⏳ Phase 5 |
 
-> The `Client` API shown below is the **design target** for Phases 3–5 (it needs the gateway). The REST layer underneath it — `Http` — **is implemented and tested** (Phase 2).
+> The `Client` API shown below is the **design target** for Phases 4–6 (it needs the event system). The layers underneath it — REST `Http` (Phase 2) and gateway `Shard` (Phase 3) — **are implemented and tested**.
 
 ```rust,ignore
 use axis::prelude::*;
@@ -54,6 +54,21 @@ Axis is not published to crates.io yet. Once hosted in a git repository:
 [dependencies]
 axis = { git = "https://example.com/axis" }
 ```
+
+## What Phase 1 provides
+
+Everything below is implemented and tested:
+
+- **Typed snowflake IDs** — `Id<T>` with zero-sized marker types (`UserId`, `GuildId`, `ChannelId`, …), string-or-number deserialization, and snowflake timestamp decoding (`id.created_at()`).
+- **`GatewayIntents`** — the complete documented intent set with the exact bit values from Discord's Gateway docs, including helpers for the three privileged intents.
+- **`Permissions`** — the full documented permission bit table (`1 << 0` through `1 << 52`), serialized the way Discord does (decimal strings), with human-readable formatting for errors.
+- **A complete error system** — `AxisError` with per-subsystem variants (gateway, HTTP, auth, rate limit, serialization, invalid data, permission, connection, internal), structured context (status + route + Discord error codes, retry durations, close codes), source chains, and a `is_transient()` classifier.
+- **Gateway close-code semantics** — every documented close code (4000–4014) with correct reconnect/resume classification, ready for the gateway phase: close codes 4004 and 4010–4014 are non-reconnectable; 4007/4009 require a fresh session instead of a resume.
+- **`Timestamp`** — RFC 3339 timestamps with serde support matching Discord's format.
+- **`Secret`/`Token`** — credentials that cannot accidentally leak: redacted `Debug`, no `Display`, no serde, plus a `from_env` constructor.
+- **`User` model** — the first data model, establishing the patterns (optional fields everywhere the API is optional, unknown-field tolerance, typed IDs, bitset flags) the remaining models follow.
+- **Logging** — structured logging via `tracing`, with an optional default-subscriber helper (Axis never installs global state on its own).
+
 
 ## What Phase 2 provides — the REST layer
 
@@ -92,19 +107,44 @@ async fn main() -> Result<(), AxisError> {
 - **Typed errors end to end**: `401 → AuthError`, `429 → RateLimitError` (after bounded retries), other statuses → `HttpError` with the Discord error code + message parsed from the body.
 - **Expanded models**: `Message`, `Channel`, `Guild`, `Member`, `Role`, `Embed` (and sub-structures), `Attachment`, `Reaction`, `Emoji`, plus the documented `ChannelType`/`MessageType` enums and `MessageFlags`.
 
-## What Phase 1 provides
+## What Phase 3 provides — the gateway
 
-Everything below is implemented and tested:
+A `Shard` maintains one gateway connection on a background task and streams
+raw dispatch events:
 
-- **Typed snowflake IDs** — `Id<T>` with zero-sized marker types (`UserId`, `GuildId`, `ChannelId`, …), string-or-number deserialization, and snowflake timestamp decoding (`id.created_at()`).
-- **`GatewayIntents`** — the complete documented intent set with the exact bit values from Discord's Gateway docs, including helpers for the three privileged intents.
-- **`Permissions`** — the full documented permission bit table (`1 << 0` through `1 << 52`), serialized the way Discord does (decimal strings), with human-readable formatting for errors.
-- **A complete error system** — `AxisError` with per-subsystem variants (gateway, HTTP, auth, rate limit, serialization, invalid data, permission, connection, internal), structured context (status + route + Discord error codes, retry durations, close codes), source chains, and a `is_transient()` classifier.
-- **Gateway close-code semantics** — every documented close code (4000–4014) with correct reconnect/resume classification, ready for the gateway phase: close codes 4004 and 4010–4014 are non-reconnectable; 4007/4009 require a fresh session instead of a resume.
-- **`Timestamp`** — RFC 3339 timestamps with serde support matching Discord's format.
-- **`Secret`/`Token`** — credentials that cannot accidentally leak: redacted `Debug`, no `Display`, no serde, plus a `from_env` constructor.
-- **`User` model** — the first data model, establishing the patterns (optional fields everywhere the API is optional, unknown-field tolerance, typed IDs, bitset flags) the remaining models follow.
-- **Logging** — structured logging via `tracing`, with an optional default-subscriber helper (Axis never installs global state on its own).
+```rust
+use axis::prelude::*;
+
+#[tokio::main]
+async fn main() -> Result<(), AxisError> {
+    let shard = Shard::builder(Token::from_env("DISCORD_TOKEN")?, GatewayIntents::unprivileged())
+        .build()?;
+
+    let mut events = shard.start();
+    while let Some(event) = events.next_event().await {
+        match event? {
+            ShardEvent::Dispatch { kind, data } => {
+                if kind == "MESSAGE_CREATE" {
+                    tracing::info!(?data, "new message");
+                }
+            }
+            ShardEvent::Reconnecting { close_code } => {
+                tracing::warn!(?close_code, "shard reconnecting");
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+```
+
+- **Protocol-complete per the docs**: Hello → jittered first heartbeat → Identify (token without `Bot ` prefix, intents, shard pair, connection properties) → heartbeats carrying the last sequence number → Heartbeat ACK tracking.
+- **Zombie detection**: no heartbeat ack between beats → the connection is terminated with a session-preserving close code and resumed.
+- **Reconnect vs resume, decided correctly** (the core requirement): op 7 Reconnect, resumable op 9 Invalid Session, transport loss, and resumable close codes → **Resume** (to the `resume_gateway_url` from READY, with `session_id` + `seq`). Invalid Session with `d: false`, close codes 1000/1001, and 4007/4009 → fresh **Identify**. Fatal codes (4004, 4010–4014) end the stream with a typed error instead of retrying forever.
+- **Sequence tracking and session management** live in one place (`Session`), so a reconnect never blindly re-identifies.
+- **Graceful shutdown**: `Shard::shutdown()` (or dropping the handle) closes with code 1000 and ends the event stream; dropping the stream's consumer also winds the shard down.
+- **Sharding-ready**: one `Shard` is one connection; `ShardBuilder::shard(id, total)` puts the shard pair in Identify.
+- **Tested over real sockets**: 13 pipeline tests run against a scripted local WebSocket server — identify shape, heartbeat/ack flow, op-7 resume, invalid-session both ways, close-code-driven resume vs identify, zombie teardown, transport drops, fatal close codes, shutdown, and reconnect-attempt caps.
 
 ## Design principles
 

@@ -10,9 +10,9 @@ updated as phases land.
 |---|---|---|
 | `axis-core` | Typed snowflake IDs, timestamps, gateway intents, permissions, the unified error system, credential redaction, optional logging setup | — |
 | `axis-model` | Strongly typed Discord data models | `axis-core` |
-| `axis` | Facade: re-exports the pieces applications touch, provides the `prelude` | `axis-core`, `axis-model`, `axis-rest` |
+| `axis` | Facade: re-exports the pieces applications touch, provides the `prelude` | `axis-core`, `axis-model`, `axis-rest`, `axis-gateway` |
 | `axis-rest` | Async REST client: auth, rate limits, typed request builders | `axis-core`, `axis-model` |
-| `axis-gateway` | Gateway WebSocket client: identify, heartbeat, resume, sharding *(Phase 3)* | `axis-core`, `axis-model`, `axis-rest` (API version / URL negotiation) |
+| `axis-gateway` | Gateway WebSocket client: identify, heartbeat, resume, reconnect | `axis-core` |
 | `axis-events` | Event parsing and asynchronous handler dispatch *(Phase 4)* | `axis-core`, `axis-model`, `axis-gateway` |
 | `axis-commands` | Slash-command framework on top of interactions *(Phase 5)* | `axis-core`, `axis-model`, `axis-rest`, `axis-events` |
 | `tests` (`axis-integration-tests`) | Cross-crate integration tests through the public facade API | `axis` |
@@ -148,8 +148,15 @@ come later, but the core stays storage-free).
 | `reqwest` (json + rustls-tls, no default features) | Async HTTP; rustls avoids a system OpenSSL dependency |
 | `mockito` (dev-dependency) | Local mock HTTP server for pipeline tests |
 
-Deliberately absent: WebSocket libraries (`url`, `bytes`, `futures` remain
-unexposed), database drivers — each arrives with the phase that needs it.
+### Added in Phase 3 (Gateway)
+
+| Dependency | Why |
+|---|---|
+| `tokio-tungstenite` (rustls-tls-webpki-roots) | Async WebSocket transport; rustls avoids a system OpenSSL dependency |
+| `futures-util` | Stream/Sink combinators for the split WebSocket |
+
+Deliberately absent: `url`, `bytes`, database drivers — each arrives with
+the phase that needs it.
 
 ## Phase 2 design decisions (REST)
 
@@ -208,8 +215,8 @@ exactly what they require (the Phase 5 command framework's pre-checks).
 |---|---|---|
 | 1 | Workspace, core types, error system, first model, docs | ✅ done |
 | 2 | REST: auth, HTTP client, rate limiting, message/channel/guild/member/role/reaction ops, mocked tests | ✅ done |
-| 3 | Gateway: connect, identify, heartbeat, resume, reconnect, event dispatch | next |
-| 4 | Models expansion + event system + handlers | ⏳ |
+| 3 | Gateway: connect, identify, heartbeat, resume, reconnect, event dispatch | ✅ done |
+| 4 | Models expansion + event system + handlers | next |
 | 5 | Interactions and slash-command framework | ⏳ |
 | 6 | Examples, integration/long-run testing, docs polish | ⏳ |
 
@@ -228,3 +235,64 @@ exactly what they require (the Phase 5 command framework's pre-checks).
   (`axis-integration-tests`), which is how applications consume the library.
 - Phases 3+ add mocked gateway frames (heartbeat acks, close codes, resume
   flows) — live Discord connections are never the only test path.
+
+## Phase 3 design decisions (Gateway)
+
+### 15. One shard, one supervision task
+
+`Shard` owns a single gateway connection driven by one task that `select!`s
+over socket reads, heartbeat deadlines, and the shutdown signal. The
+WebSocket is split into disjoint sink/source halves at the runner level so
+heartbeats can be written while a read is being awaited (two `&mut` borrows
+of one struct would not compose inside `select!`). The event channel is
+unbounded: a stalled consumer must never block the heartbeat loop, or the
+shard would disconnect itself.
+
+### 16. Resume-vs-identify decided by the documented triggers
+
+`Session` holds `session_id`, last sequence, and `resume_gateway_url`.
+Reconnection policy, all sourced from the docs:
+
+- op 7 (Reconnect), op 9 with `d: true`, transport loss, zombie heartbeats,
+  and resumable close codes → new connection to `resume_gateway_url` +
+  **Resume** with the stored `session_id`/`seq`.
+- op 9 with `d: false`, close codes 1000/1001 (which invalidate sessions),
+  and 4007/4009 (docs: "reconnect and start a new session") → **fresh
+  Identify** at the configured gateway URL; `Session::reset()` clears the
+  resume URL so the stale one is never reused.
+- 4004 and 4010-4014 → stream ends with a typed `GatewayError::Closed`;
+  retrying cannot fix a bad token or intents configuration.
+
+Zombie detection follows the docs exactly: if no Heartbeat ACK arrives
+between two heartbeat attempts, terminate with a close code other than
+1000/1001 and resume. The first heartbeat after Hello is sent after
+`heartbeat_interval * jitter` (also per the docs), and server-requested
+heartbeats (op 1) are answered immediately.
+
+### 17. Raw dispatches now, typed events next
+
+`ShardEvent::Dispatch` forwards `{kind, data}` untouched: sequence and
+session bookkeeping stay internal (they exist for resume), and typed event
+parsing is Phase 4's `axis-events` concern. Lifecycle events (`Connected`,
+`Resumed`, `Reconnecting`) are surfaced for observability and because READY
+alone cannot tell you a resume happened.
+
+### 18. Sharding-ready by construction
+
+One `Shard` is one connection with a shard index/count pair in Identify.
+Multi-shard management (plus session-start-limit accounting from
+`GET /gateway/bot`) is deferred to a coordinating manager once the event
+system exists — the per-connection design needed for it is already in
+place.
+
+### Testing the gateway without Discord
+
+The pipeline tests run a real local WebSocket server (the same
+`tokio-tungstenite` crate, server side) with scripted per-connection
+handlers: identify shape (token prefix stripping, intents, properties),
+heartbeat/ack flow with sequence numbers, op 7 → Resume, op 9 both ways,
+close codes 4004 (fatal, no reconnect) and 4007 (fresh identify), zombie
+teardown, abrupt transport drops, graceful shutdown (close frame 1000),
+and the reconnect-attempts cap. `resume_gateway_url` in the fixture points
+back at the test server, so the full reconnect path — including URL
+switching — is exercised over real sockets.

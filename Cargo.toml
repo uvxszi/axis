@@ -13,6 +13,7 @@ license = "MIT OR Apache-2.0"
 axis-core = { path = "crates/axis-core", version = "0.1.0" }
 axis-model = { path = "crates/axis-model", version = "0.1.0" }
 axis-rest = { path = "crates/axis-rest", version = "0.1.0" }
+axis-gateway = { path = "crates/axis-gateway", version = "0.1.0" }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -29,6 +30,10 @@ time = { version = "0.3", features = ["serde-well-known"] }
 
 # Async runtime (adopted from Phase 2 onward; declared here once)
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal"] }
+futures-util = { version = "0.3", default-features = false, features = ["std", "sink", "async-await"] }
+
+# Gateway WebSocket transport; TLS via rustls (no system OpenSSL dependency)
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 
 # Structured logging
 tracing = "0.1"

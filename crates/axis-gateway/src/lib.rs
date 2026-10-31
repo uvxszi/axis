@@ -2,27 +2,60 @@
 //!
 //! Discord Gateway (WebSocket) client.
 //!
-//! ## Planned responsibilities (Phase 3)
+//! A [`Shard`] maintains one gateway connection on a background task: it
+//! identifies, heartbeats (with zombie detection), tracks sequence
+//! numbers, and reconnects with the correct resume-vs-identify decision.
+//! Events arrive through an [`EventStream`]:
 //!
-//! - Connecting to the gateway and authenticating with `Identify`.
-//! - Heartbeating and heartbeat acknowledgement (`op 1`/`op 11`) tracking.
-//! - Sequence number tracking with correct reconnection semantics:
-//!   `Resume` when the session is still valid, a fresh `Identify` after
-//!   close codes 4007/4009, and a hard stop for non-reconnectable codes
-//!   (4004, 4010-4014). Reconnecting never blindly re-identifies.
-//! - Session management with `session_id` and `resume_gateway_url` handling.
-//! - Dispatching decoded events with intent-based subscriptions.
-//! - Sharding support built into the connection model from the start.
-//! - Graceful shutdown without leaking heartbeat or reader tasks.
+//! ```
+//! use axis_core::{GatewayIntents, Token};
+//! use axis_gateway::{Shard, ShardEvent};
+//! # async fn demo() -> axis_core::Result<()> {
+//! let shard = Shard::builder(Token::from_env("DISCORD_TOKEN")?, GatewayIntents::unprivileged())
+//!     .build()?;
+//! let mut events = shard.start();
 //!
-//! The error types this crate will produce ([`GatewayError`],
-//! [`GatewayCloseCode`]) already exist in `axis-core`, including the
-//! documented reconnect/resume semantics per close code.
+//! while let Some(event) = events.next_event().await {
+//!     match event? {
+//!         ShardEvent::Dispatch { kind, data } => {
+//!             tracing::debug!(kind, "dispatch received");
+//!             let _ = data;
+//!         }
+//!         ShardEvent::Connected | ShardEvent::Resumed => {}
+//!         ShardEvent::Reconnecting { close_code } => {
+//!             tracing::warn!(?close_code, "shard reconnecting");
+//!         }
+//!     }
+//! }
+//! # Ok(())
+//! # }
+//! ```
 //!
-//! ## Status
+//! ## Reconnect vs resume
 //!
-//! Not yet implemented. This crate intentionally contains no APIs yet —
-//! see the repository README and `docs/ARCHITECTURE.md` for the plan.
+//! Per Discord's protocol, reconnecting does not always mean identifying
+//! again. Axis decides per trigger:
 //!
-//! [`GatewayError`]: axis_core::error::GatewayError
-//! [`GatewayCloseCode`]: axis_core::error::GatewayCloseCode
+//! - `Reconnect` (op 7), resumable `Invalid Session` (op 9), transport
+//!   loss, zombie heartbeats, and resume-able close codes → send **Resume**
+//!   on a new connection to the `resume_gateway_url` from READY.
+//! - `Invalid Session` with `d: false`, close codes 1000/1001, and close
+//!   codes 4007/4009 → drop the session and **Identify** afresh.
+//! - Fatal close codes (4004, 4010-4014 — bad token, bad shard setup,
+//!   invalid intents) end the stream with a typed error; retrying cannot
+//!   fix those.
+//!
+//! ## Sharding
+//!
+//! One `Shard` is one connection. [`ShardBuilder::shard`] configures the
+//! shard index/count pair sent in Identify; running multiple shards is a
+//! matter of spawning several (a coordinating manager arrives later).
+//! Session-start limits from `GET /gateway/bot` are not consulted yet.
+
+mod connection;
+mod protocol;
+mod session;
+mod shard;
+
+pub use protocol::DEFAULT_GATEWAY_URL;
+pub use shard::{EventStream, Shard, ShardBuilder, ShardEvent};

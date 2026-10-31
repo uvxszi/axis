@@ -17,19 +17,24 @@
 //! | [`error`], [`id`], [`intents`], [`permissions`], [`secret`], [`timestamp`], [`log`] | `axis-core` | Foundation types |
 //! | [`model`] | `axis-model` | Discord data models |
 //! | [`rest`] | `axis-rest` | Asynchronous REST client |
+//! | [`gateway`] | `axis-gateway` | Gateway WebSocket shards |
 //!
-//! The gateway (`axis-gateway`), event system (`axis-events`), and command
-//! framework (`axis-commands`) are separate crates that will be re-exported
-//! here as they are implemented; see the README and `docs/ARCHITECTURE.md`
-//! for the roadmap.
+//! The event system (`axis-events`) and command framework
+//! (`axis-commands`) are separate crates that will be re-exported here as
+//! they are implemented; see the README and `docs/ARCHITECTURE.md` for the
+//! roadmap.
 //!
 //! ## Status
 //!
-//! Phases 1 (foundation) and 2 (REST) are implemented: core types, the
-//! error system, data models, and a rate-limit-aware REST client with
-//! typed request builders. The gateway (`Http` + WebSocket `Client`) and
-//! event system arrive in later phases — examples showing a full `Client`
-//! API are design targets for those phases, not working code.
+//! Phases 1 (foundation), 2 (REST), and 3 (gateway) are implemented: core
+//! types, the error system, data models, a rate-limit-aware REST client,
+//! and a reconnecting/resuming gateway shard. Typed event parsing and the
+//! command framework arrive in later phases.
+
+pub mod gateway {
+    //! Discord Gateway (WebSocket) shards.
+    pub use axis_gateway::*;
+}
 
 pub mod error {
     //! Unified error types.
@@ -91,6 +96,7 @@ pub mod prelude {
             InternalError, InvalidDataError, PermissionError, RateLimitError, Result,
             SerializationError,
         },
+        gateway::{EventStream, Shard, ShardBuilder, ShardEvent},
         id::{
             ApplicationId, AutoModRuleId, ChannelId, EmojiId, GenericId, GuildId, Id,
             IntegrationId, InteractionId, MessageId, RoleId, ScheduledEventId, StickerId, UserId,
