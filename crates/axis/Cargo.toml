@@ -7,7 +7,10 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+axis-commands.workspace = true
 axis-core.workspace = true
+futures-util.workspace = true
+serde_json.workspace = true
 axis-events.workspace = true
 axis-gateway.workspace = true
 axis-model.workspace = true

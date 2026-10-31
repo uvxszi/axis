@@ -99,7 +99,7 @@ impl Http {
                         continue;
                     }
                     return Err(AxisError::Connection(ConnectionError::with_source(
-                        format!("request to {} failed", route.path),
+                        format!("request to {} failed", route.error_route()),
                         error,
                     )));
                 }
@@ -162,7 +162,7 @@ impl Http {
                 ))
             })?;
             let (code, message) = parse_error_body(&text);
-            let mut http_error = HttpError::new(status.as_u16(), route.path.clone());
+            let mut http_error = HttpError::new(status.as_u16(), route.error_route().to_owned());
             if let Some(code) = code {
                 http_error = http_error.with_code(code);
             }

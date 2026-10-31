@@ -10,11 +10,11 @@ updated as phases land.
 |---|---|---|
 | `axis-core` | Typed snowflake IDs, timestamps, gateway intents, permissions, the unified error system, credential redaction, optional logging setup | — |
 | `axis-model` | Strongly typed Discord data models | `axis-core` |
-| `axis` | Facade: re-exports the pieces applications touch, provides the `prelude` | `axis-core`, `axis-model`, `axis-rest`, `axis-gateway`, `axis-events` |
+| `axis` | Facade: the `Client`, re-exports, and the `prelude` | `axis-core`, `axis-model`, `axis-rest`, `axis-gateway`, `axis-events`, `axis-commands` |
 | `axis-rest` | Async REST client: auth, rate limits, typed request builders | `axis-core`, `axis-model` |
 | `axis-gateway` | Gateway WebSocket client: identify, heartbeat, resume, reconnect | `axis-core` |
 | `axis-events` | Typed event parsing and asynchronous handler dispatch | `axis-core`, `axis-model`, `axis-gateway` |
-| `axis-commands` | Slash-command framework on top of interactions *(Phase 5)* | `axis-core`, `axis-model`, `axis-rest`, `axis-events` |
+| `axis-commands` | Slash-command framework on top of interactions | `axis-core`, `axis-model`, `axis-rest` |
 | `tests` (`axis-integration-tests`) | Cross-crate integration tests through the public facade API | `axis` |
 
 ```
@@ -217,8 +217,8 @@ exactly what they require (the Phase 5 command framework's pre-checks).
 | 2 | REST: auth, HTTP client, rate limiting, message/channel/guild/member/role/reaction ops, mocked tests | ✅ done |
 | 3 | Gateway: connect, identify, heartbeat, resume, reconnect, event dispatch | ✅ done |
 | 4 | Models expansion + event system + handlers | ✅ done |
-| 5 | Interactions and slash-command framework | next |
-| 6 | Examples, integration/long-run testing, docs polish | ⏳ |
+| 5 | Interactions and slash-command framework | ✅ done |
+| 6 | Examples, integration/long-run testing, docs polish | next |
 
 ## Testing strategy
 
@@ -335,3 +335,51 @@ token, permissions); the `data` field stays raw because its shape differs
 per interaction type. `Interaction::command_data()` decodes the
 application-command shape (including `ResolvedData`), and Phase 5 builds
 the typed per-kind enum plus the command framework on top.
+
+## Phase 5 design decisions (Commands & Client)
+
+### 23. The Client composes; it does not absorb
+
+`Client` is thin composition in the facade crate: an `Arc<Http>`, a
+`Shard`, and a `Dispatcher` (optionally bridged to a `CommandRegistry`).
+Subsystem APIs remain directly reachable (`Client::http()`, `Shard`
+configuration, `Dispatcher` semantics), and `run_with` accepts any event
+stream, which keeps embedding and testing possible without a live gateway.
+`build()` fetches `GET /gateway` for the recommended URL — overridable for
+tests. Event handlers receive a `Context` that carries the REST client;
+the command framework deliberately does not depend on it: `Invocation`
+carries its own `Arc<Http>`, so `axis-commands` sits below the facade in
+the dependency graph.
+
+### 24. Registration by bulk overwrite
+
+The registry serializes to `ApplicationCommandFields` and syncs through
+`PUT /applications/{id}/commands` (or the guild variant) — the documented
+way to make the API match the declaration set. Declaration validation
+(name rules, 1-100 descriptions, required-before-optional ordering, no
+choices+autocomplete mixing, handler presence) runs client-side first:
+invalid declarations fail locally instead of spending a Discord round
+trip and an invalid-request strike.
+
+### 25. Interaction tokens are credentials in URLs
+
+The callback and followup endpoints embed the interaction token in the
+path (as the API requires). Routes therefore carry a sanitized `display`
+form (`/interactions/900/[token]/callback`) and every error and log line
+uses it — the token cannot leak through `HttpError`. The general rule
+established in Phase 2 (bounded retries) interacts here with the 3-second
+initial-response deadline: interaction responses are POSTs, which the
+pipeline never retries on 5xx, so no double-response risk exists.
+
+### 26. Commands are a tree walked at dispatch time
+
+The registry stores a two-level tree (leaf commands, subcommands, one
+group level) matching Discord's shape. `resolve` walks the incoming
+options to the leaf handler and records the subcommand path; the
+invocation's argument access reads options at that path's scope. Options
+stay handler-side typed via `FromCommandValue` (String, i64, f64, bool,
+and snowflake IDs) rather than a macro-driven DSL — simple, inspectable,
+and sufficient for the documented option kinds. Autocomplete providers
+receive the same `Invocation` and answer through the type-8 callback;
+requests without a focused option or provider are answered with empty
+choices rather than left hanging (the token dies if nothing responds).

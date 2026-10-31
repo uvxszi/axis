@@ -31,16 +31,29 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 name = "axis"
 version = "0.1.0"
 dependencies = [
+ "axis-commands",
  "axis-core",
  "axis-events",
  "axis-gateway",
  "axis-model",
  "axis-rest",
+ "futures-util",
+ "serde_json",
 ]
 
 [[package]]
 name = "axis-commands"
 version = "0.1.0"
+dependencies = [
+ "axis-core",
+ "axis-model",
+ "axis-rest",
+ "futures-util",
+ "mockito",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "axis-core"
@@ -87,6 +100,8 @@ name = "axis-integration-tests"
 version = "0.1.0"
 dependencies = [
  "axis",
+ "futures-util",
+ "mockito",
  "serde_json",
  "tokio",
 ]

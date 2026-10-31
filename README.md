@@ -12,13 +12,13 @@ Axis is under active development and follows a phased plan (see [docs/ARCHITECTU
 |---|---|---|
 | Foundation: IDs, timestamps, intents, permissions, errors, logging | [`axis-core`](crates/axis-core) | ✅ Phase 1 |
 | Data models | [`axis-model`](crates/axis-model) | ✅ REST-surface models; expands in Phase 4 |
-| Facade + prelude | [`axis`](crates/axis) | ✅ Phase 1–4 |
+| Facade, Client, prelude | [`axis`](crates/axis) | ✅ Phase 1–5 |
 | REST client, rate limits | [`axis-rest`](crates/axis-rest) | ✅ Phase 2 |
 | Gateway (WebSocket) shards | [`axis-gateway`](crates/axis-gateway) | ✅ Phase 3 |
 | Event system | [`axis-events`](crates/axis-events) | ✅ Phase 4 |
-| Command framework | [`axis-commands`](crates/axis-commands) | ⏳ Phase 5 |
+| Command framework | [`axis-commands`](crates/axis-commands) | ✅ Phase 5 |
 
-> The `Client` API shown below is the **design target** for Phases 5–6 (it ties the layers together). Everything underneath it — REST `Http` (Phase 2), gateway `Shard` (Phase 3), and typed events with a dispatcher (Phase 4) — **is implemented and tested**.
+> The `Client` API below is **implemented** — the original design target, now real: REST (Phase 2), gateway (Phase 3), events (Phase 4), and commands (Phase 5) compose exactly as first sketched.
 
 ```rust,ignore
 use axis::prelude::*;
@@ -88,6 +88,58 @@ dispatcher
 - **Unknown events never break the bot**: dispatch kinds Axis does not model yet surface as `Event::Unknown { kind, data }` (register `on_unknown` to observe them); parse failures on known kinds are logged and skipped; handler errors stop later handlers for that event but never the run loop.
 - **`Dispatcher`** — typed per-event registration in registration order, a catch-all `on_any`, an `on_unknown` hook, and a `run` loop that consumes a shard's event stream (stream errors are the only fatal ones).
 - **Model expansion** — `PartialMessage`, delete/bulk-delete and reaction payloads, flat member-event payloads (`MemberAdd`/`MemberUpdate`/`MemberRemove`), `GuildCreate` with embedded channels/members, `UnavailableGuild`, `Ready`, `Application`/`PartialApplication`, `Interaction` (with command data decoding groundwork for Phase 5), and the complete `AuditLogEntry` with all ~75 documented action types.
+
+## What Phase 5 provides — commands and the Client
+
+The layers compose into the client the README opened with:
+
+```rust
+use axis::prelude::*;
+
+#[tokio::main]
+async fn main() -> Result<(), AxisError> {
+    let mut registry = CommandRegistry::new();
+    registry.command("echo", "Repeat after you", |cmd| {
+        cmd.option(
+            CommandOption::string("text", "What to echo").required().finish(),
+        )
+        .handler(|invocation| async move {
+            let text: String = invocation.arg("text")?;
+            invocation.reply().content(text).await?;
+            Ok(())
+        });
+    });
+
+    let mut client = Client::builder(Token::from_env("DISCORD_TOKEN")?)
+        .intents(GatewayIntents::unprivileged() | GatewayIntents::MESSAGE_CONTENT)
+        .commands(registry)
+        .build()
+        .await?;
+
+    client.on_message_create(|ctx, message| async move {
+        if message.content == "!hello" {
+            ctx.http
+                .create_message(message.channel_id)
+                .content("Hello from Axis!")
+                .await?;
+        }
+        Ok(())
+    });
+
+    // Sync the command set once (global bulk overwrite):
+    // registry.register_global(&client.http(), application_id).await?;
+
+    client.start().await?;
+    Ok(())
+}
+```
+
+- **`Client`** — `build()` fetches the recommended gateway URL (`GET /gateway`), wires the shard + dispatcher + command registry; `start()` runs until the shard stops; `shutdown()` closes gracefully; `on_*` handlers receive a `Context` with the REST client.
+- **Command framework** — typed options (string/integer/number/boolean/user/channel/role/mentionable/attachment) with choices, bounds, and lengths; subcommands and subcommand groups with their own handlers; `default_member_permissions`, `dm_permission`, and `nsfw` flags; declaration validation (required-before-optional, name/description rules, handler presence).
+- **Registration** — bulk-overwrite (global or per-guild) through the rate-limit-aware REST client, plus command permissions (`GET`/`PUT`).
+- **Invocation handling** — typed argument extraction (`invocation.arg::<T>()`), subcommand-path resolution, reply / defer / ephemeral responses and followups through the interaction callback + webhook endpoints.
+- **Autocomplete** — per-option providers that inspect the focused input and answer with choices.
+- **Token safety** — interaction tokens ride in URLs (as the API requires) but error routes are sanitized (`/interactions/900/[token]/callback`), so credentials never reach logs.
 
 ## What Phase 1 provides
 

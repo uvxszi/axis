@@ -16,6 +16,8 @@ axis = { path = "../crates/axis" }
 serde_json.workspace = true
 
 [dev-dependencies]
+futures-util.workspace = true
+mockito = "1"
 tokio.workspace = true
 
 [[test]]

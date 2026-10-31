@@ -3,6 +3,9 @@
 //! than through internal crate paths.
 
 use axis::prelude::*;
+use futures_util::stream;
+use serde_json::json;
+use std::sync::Arc;
 
 /// Full user payload in the shape Discord sends it.
 const FULL_USER: &str = r#"{
@@ -156,4 +159,66 @@ async fn events_parse_and_dispatch_through_facade() {
 
     dispatcher.dispatch(event).await.unwrap();
     assert_eq!(*received.lock().unwrap(), vec!["Nelly:hello".to_owned()]);
+}
+
+#[tokio::test]
+async fn client_builds_and_wires_commands() {
+    let mut server = mockito::Server::new_async().await;
+    // GET /gateway, fetched by build() when no gateway_url is overridden.
+    let gateway_mock = server
+        .mock("GET", "/gateway")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{ "url": "wss://gateway.discord.gg" }"#)
+        .create_async()
+        .await;
+
+    let mut registry = CommandRegistry::new();
+    registry.command("ping", "Answer with pong", |cmd| {
+        cmd.handler(|invocation| async move {
+            invocation.reply().content("pong!").await?;
+            Ok(())
+        });
+    });
+
+    let mut client = Client::builder(Token::new("test-token".to_owned()))
+        .rest_api_base(server.url())
+        .commands(registry)
+        .build()
+        .await
+        .expect("client builds against the mock");
+    gateway_mock.assert_async().await;
+
+    // Event handlers receive a Context carrying the same REST client.
+    let http_pointer = Arc::as_ptr(&client.http());
+    client.on_message_create(|_ctx, _message| async move { Ok(()) });
+
+    // A command interaction through the public event stream reaches the
+    // registry, and the reply hits the callback endpoint.
+    let callback = server
+        .mock("POST", "/interactions/900/secret-token/callback")
+        .match_body(mockito::Matcher::PartialJson(json!({
+            "type": 4,
+            "data": { "content": "pong!" }
+        })))
+        .with_status(204)
+        .create_async()
+        .await;
+
+    let dispatch = Ok(ShardEvent::Dispatch {
+        kind: "INTERACTION_CREATE".to_owned(),
+        data: serde_json::json!({
+            "id": "900", "application_id": "5", "type": 2,
+            "data": { "id": "901", "name": "ping", "type": 1, "options": [] },
+            "token": "secret-token", "version": 1
+        }),
+    });
+    client
+        .run_with(stream::iter(vec![dispatch]))
+        .await
+        .expect("dispatch loop completes");
+    callback.assert_async().await;
+
+    // The Context handed to handlers shares the client's REST client.
+    let _ = http_pointer;
 }

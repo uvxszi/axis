@@ -6,8 +6,17 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-# Dependencies are added when the commands phase starts (Phase 5):
-# axis-core, axis-model, axis-rest, axis-events.
+[dependencies]
+axis-core.workspace = true
+axis-model.workspace = true
+axis-rest.workspace = true
+futures-util.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+mockito = "1"
+tokio.workspace = true
 
 [lints]
 workspace = true

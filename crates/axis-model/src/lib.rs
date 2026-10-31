@@ -115,6 +115,7 @@ macro_rules! api_enum {
 }
 
 pub mod application;
+pub mod application_command;
 pub mod audit_log;
 pub mod channel;
 pub mod emoji;
@@ -127,6 +128,11 @@ pub mod role;
 pub mod user;
 
 pub use application::{Application, PartialApplication};
+pub use application_command::{
+    ApplicationCommand, ApplicationCommandFields, ApplicationCommandOption,
+    ApplicationCommandOptionChoice, ApplicationCommandOptionType, ApplicationCommandPermission,
+    ApplicationCommandPermissionType, GuildApplicationCommandPermissions,
+};
 pub use audit_log::{AuditEntryInfo, AuditLogAction, AuditLogChange, AuditLogEntry};
 pub use channel::{Channel, ChannelType, OverwriteType, PermissionOverwrite, VideoQualityMode};
 pub use emoji::Emoji;
@@ -135,7 +141,9 @@ pub use guild::{
     NsfwLevel, PremiumTier, UnavailableGuild, VerificationLevel,
 };
 pub use interaction::{
-    CommandData, CommandDataOption, CommandType, Interaction, InteractionType, ResolvedData,
+    CommandData, CommandDataOption, CommandType, ComponentData, Interaction,
+    InteractionCallbackType, InteractionData, InteractionMessageCallbackData, InteractionType,
+    ModalSubmitData, ResolvedData,
 };
 pub use member::{Member, MemberAdd, MemberRemove, MemberUpdate};
 pub use message::{

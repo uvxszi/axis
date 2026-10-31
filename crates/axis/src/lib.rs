@@ -19,18 +19,18 @@
 //! | [`rest`] | `axis-rest` | Asynchronous REST client |
 //! | [`gateway`] | `axis-gateway` | Gateway WebSocket shards |
 //! | [`events`] | `axis-events` | Typed event parsing + dispatch |
+//! | [`commands`] | `axis-commands` | Slash-command framework |
 //!
-//! The command framework (`axis-commands`) is a separate crate that will
-//! be re-exported here once implemented; see the README and
-//! `docs/ARCHITECTURE.md` for the roadmap.
+//! Tying it all together: [`client::Client`] — the README's design
+//! target, now implemented.
 //!
 //! ## Status
 //!
-//! Phases 1 (foundation), 2 (REST), 3 (gateway), and 4 (models + events)
-//! are implemented: core types, the error system, data models, a
-//! rate-limit-aware REST client, a reconnecting/resuming gateway shard,
-//! and typed event parsing with a handler dispatcher. The command
-//! framework arrives in Phase 5.
+//! Phases 1 (foundation) through 5 (commands) are implemented: core
+//! types, the error system, data models, a rate-limit-aware REST client,
+//! a reconnecting/resuming gateway shard, typed event parsing with a
+//! handler dispatcher, and a slash-command framework. Phase 6 brings the
+//! example bots and long-run polish.
 
 pub mod events {
     //! Typed event parsing and asynchronous handler dispatch.
@@ -40,6 +40,14 @@ pub mod events {
 pub mod gateway {
     //! Discord Gateway (WebSocket) shards.
     pub use axis_gateway::*;
+}
+
+/// The client: REST + gateway + event dispatch, tied together.
+pub mod client;
+
+pub mod commands {
+    //! Slash-command framework.
+    pub use axis_commands::*;
 }
 
 pub mod error {
@@ -97,6 +105,8 @@ pub mod timestamp {
 /// ```
 pub mod prelude {
     pub use crate::{
+        client::{Client, ClientBuilder, Context},
+        commands::{CommandOption, CommandRegistry, Invocation},
         error::{
             AuthError, AxisError, ConnectionError, GatewayCloseCode, GatewayError, HttpError,
             InternalError, InvalidDataError, PermissionError, RateLimitError, Result,

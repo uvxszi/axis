@@ -230,7 +230,7 @@ impl Dispatcher {
     /// Stream errors are fatal (the gateway gave up) and end the loop with
     /// the error; parse failures for known event kinds and handler errors
     /// are logged and skipped, keeping the bot alive.
-    pub async fn run<S>(self, events: S) -> Result<()>
+    pub async fn run<S>(&self, events: S) -> Result<()>
     where
         S: Stream<Item = Result<ShardEvent, AxisError>> + Unpin,
     {

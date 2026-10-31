@@ -32,18 +32,29 @@ macro_rules! into_future {
     };
 }
 
+pub mod application_command;
 pub mod channel;
 pub mod guild;
+pub mod interaction;
 pub mod member;
 pub mod message;
 pub mod reaction;
 pub mod role;
 
+pub use application_command::{
+    BulkOverwriteGlobalCommands, BulkOverwriteGuildCommands, CreateGlobalCommand,
+    DeleteGlobalCommand, DeleteGuildCommand, GetGlobalCommands, GetGuildCommandPermissions,
+    SetGuildCommandPermissions,
+};
 pub use channel::{
     CreateGuildChannel, DeleteChannel, DeleteChannelPermission, EditChannel, EditChannelPermission,
     GetChannel,
 };
 pub use guild::GetGuild;
+pub use interaction::{
+    CreateFollowup, DeferInteraction, DeleteFollowup, EditFollowup, FollowupEditFields,
+    ORIGINAL_RESPONSE, RespondToAutocomplete, RespondToInteraction,
+};
 pub use member::{BanMember, EditMember, GetMember, KickMember, UnbanMember};
 pub use message::{
     BulkDeleteMessages, CreateMessage, DeleteMessage, EditMessage, GetMessage, GetMessages,

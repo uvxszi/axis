@@ -19,19 +19,20 @@ pub(crate) struct Route {
     pub path: String,
     /// The major parameter, when the route has one.
     pub major: Option<u64>,
+    /// A sanitized path for error reporting — routes that embed secrets
+    /// (interaction tokens) must never leak them into errors or logs.
+    pub display: Option<String>,
 }
 
 impl Route {
     /// Build a route without a major parameter.
-    // Unused on the lib path for now: every Phase 2 endpoint has a major
-    // parameter. Kept for upcoming no-major endpoints (e.g. `GET /users/@me`).
-    #[allow(dead_code)]
     pub(crate) fn new(method: Method, template: &'static str, path: String) -> Self {
         Self {
             method,
             template,
             path,
             major: None,
+            display: None,
         }
     }
 
@@ -47,7 +48,21 @@ impl Route {
             template,
             path,
             major: Some(major),
+            display: None,
         }
+    }
+
+    /// Override the path shown in errors and logs. Routes that embed
+    /// secrets (e.g. interaction tokens) must set a sanitized form here.
+    pub(crate) fn displaying(mut self, display: impl Into<String>) -> Self {
+        self.display = Some(display.into());
+        self
+    }
+
+    /// The path to use in error reports: the sanitized display path when
+    /// set, the concrete path otherwise.
+    pub(crate) fn error_route(&self) -> &str {
+        self.display.as_deref().unwrap_or(&self.path)
     }
 
     /// Key identifying the route shape, used to learn bucket hashes.

@@ -1,21 +1,45 @@
 //! Endpoint methods on [`Http`], returning the typed request builders
 //! from [`crate::builders`].
 
-use axis_core::{ChannelId, GenericId, GuildId, MessageId, RoleId, UserId};
-use axis_model::{Emoji, OverwriteType};
+use axis_core::{
+    ApplicationCommandId, ApplicationId, ChannelId, GenericId, GuildId, InteractionId, MessageId,
+    RoleId, UserId, error::Result,
+};
+use axis_model::{
+    ApplicationCommandFields, ApplicationCommandOptionChoice, ApplicationCommandPermission, Emoji,
+    InteractionMessageCallbackData, OverwriteType,
+};
 
 use crate::{
     builders::{
-        AddReaction, BanMember, BulkDeleteMessages, ClearReactions, CreateGuildChannel,
-        CreateMessage, CreateRole, DeleteChannel, DeleteChannelPermission, DeleteMessage,
-        DeleteOwnReaction, DeleteRole, DeleteUserReaction, EditChannel, EditChannelPermission,
-        EditMember, EditMessage, EditRole, GetChannel, GetGuild, GetMember, GetMessage,
-        GetMessages, KickMember, UnbanMember,
+        AddReaction, BanMember, BulkDeleteMessages, BulkOverwriteGlobalCommands,
+        BulkOverwriteGuildCommands, ClearReactions, CreateFollowup, CreateGlobalCommand,
+        CreateGuildChannel, CreateMessage, CreateRole, DeferInteraction, DeleteChannel,
+        DeleteChannelPermission, DeleteFollowup, DeleteGlobalCommand, DeleteGuildCommand,
+        DeleteMessage, DeleteOwnReaction, DeleteRole, DeleteUserReaction, EditChannel,
+        EditChannelPermission, EditFollowup, EditMember, EditMessage, EditRole, GetChannel,
+        GetGlobalCommands, GetGuild, GetGuildCommandPermissions, GetMember, GetMessage,
+        GetMessages, KickMember, RespondToAutocomplete, RespondToInteraction,
+        SetGuildCommandPermissions, UnbanMember,
     },
     client::Http,
+    routing::Route,
 };
 
 impl Http {
+    /// Fetch the recommended gateway URL (`GET /gateway`), e.g.
+    /// `wss://gateway.discord.gg`.
+    pub async fn get_gateway(&self) -> Result<String> {
+        #[derive(serde::Deserialize)]
+        struct GatewayResponse {
+            url: String,
+        }
+
+        let route = Route::new(reqwest::Method::GET, "/gateway", "/gateway".to_owned());
+        let response: GatewayResponse = self.json(route, None, None).await?;
+        Ok(response.url)
+    }
+
     /// Send a message to a channel.
     pub fn create_message(&self, channel_id: ChannelId) -> CreateMessage<'_> {
         CreateMessage::new(self, channel_id)
@@ -181,5 +205,140 @@ impl Http {
         message_id: MessageId,
     ) -> ClearReactions<'_> {
         ClearReactions::new(self, channel_id, message_id)
+    }
+
+    /// List the application's global commands.
+    pub fn get_global_commands(&self, application_id: ApplicationId) -> GetGlobalCommands<'_> {
+        GetGlobalCommands::new(self, application_id)
+    }
+
+    /// Create a global application command.
+    pub fn create_global_command(
+        &self,
+        application_id: ApplicationId,
+        fields: ApplicationCommandFields,
+    ) -> CreateGlobalCommand<'_> {
+        CreateGlobalCommand::new(self, application_id, fields)
+    }
+
+    /// Bulk-overwrite all global application commands — the recommended
+    /// way to sync a bot's command set.
+    pub fn bulk_overwrite_global_commands(
+        &self,
+        application_id: ApplicationId,
+        commands: Vec<ApplicationCommandFields>,
+    ) -> BulkOverwriteGlobalCommands<'_> {
+        BulkOverwriteGlobalCommands::new(self, application_id, commands)
+    }
+
+    /// Delete a global application command.
+    pub fn delete_global_command(
+        &self,
+        application_id: ApplicationId,
+        command_id: ApplicationCommandId,
+    ) -> DeleteGlobalCommand<'_> {
+        DeleteGlobalCommand::new(self, application_id, command_id)
+    }
+
+    /// Bulk-overwrite all application commands in a guild.
+    pub fn bulk_overwrite_guild_commands(
+        &self,
+        application_id: ApplicationId,
+        guild_id: GuildId,
+        commands: Vec<ApplicationCommandFields>,
+    ) -> BulkOverwriteGuildCommands<'_> {
+        BulkOverwriteGuildCommands::new(self, application_id, guild_id, commands)
+    }
+
+    /// Delete a guild application command.
+    pub fn delete_guild_command(
+        &self,
+        application_id: ApplicationId,
+        guild_id: GuildId,
+        command_id: ApplicationCommandId,
+    ) -> DeleteGuildCommand<'_> {
+        DeleteGuildCommand::new(self, application_id, guild_id, command_id)
+    }
+
+    /// List a guild's application command permissions.
+    pub fn get_guild_command_permissions(
+        &self,
+        application_id: ApplicationId,
+        guild_id: GuildId,
+    ) -> GetGuildCommandPermissions<'_> {
+        GetGuildCommandPermissions::new(self, application_id, guild_id)
+    }
+
+    /// Replace a command's per-guild permissions.
+    pub fn set_guild_command_permissions(
+        &self,
+        application_id: ApplicationId,
+        guild_id: GuildId,
+        command_id: ApplicationCommandId,
+        permissions: Vec<ApplicationCommandPermission>,
+    ) -> SetGuildCommandPermissions<'_> {
+        SetGuildCommandPermissions::new(self, application_id, guild_id, command_id, permissions)
+    }
+
+    /// Respond to an interaction with a message (initial response).
+    pub fn respond_to_interaction(
+        &self,
+        interaction_id: InteractionId,
+        token: impl Into<String>,
+        data: InteractionMessageCallbackData,
+    ) -> RespondToInteraction<'_> {
+        RespondToInteraction::new(self, interaction_id, token.into(), data)
+    }
+
+    /// Defer an interaction response; follow up later.
+    pub fn defer_interaction(
+        &self,
+        interaction_id: InteractionId,
+        token: impl Into<String>,
+    ) -> DeferInteraction<'_> {
+        DeferInteraction::new(self, interaction_id, token.into())
+    }
+
+    /// Answer an autocomplete request with suggested choices.
+    pub fn respond_to_autocomplete(
+        &self,
+        interaction_id: InteractionId,
+        token: impl Into<String>,
+        choices: Vec<ApplicationCommandOptionChoice>,
+    ) -> RespondToAutocomplete<'_> {
+        RespondToAutocomplete::new(self, interaction_id, token.into(), choices)
+    }
+
+    /// Send a followup message for a (usually deferred) interaction.
+    pub fn create_followup(
+        &self,
+        application_id: ApplicationId,
+        token: impl Into<String>,
+        data: InteractionMessageCallbackData,
+    ) -> CreateFollowup<'_> {
+        CreateFollowup::new(self, application_id, token.into(), data)
+    }
+
+    /// Edit a followup message; pass [`crate::builders::ORIGINAL_RESPONSE`]
+    /// as the message ID to edit the interaction's initial response.
+    pub fn edit_followup(
+        &self,
+        application_id: ApplicationId,
+        token: impl Into<String>,
+        message_id: impl core::fmt::Display,
+        fields: crate::builders::FollowupEditFields,
+    ) -> EditFollowup<'_> {
+        EditFollowup::new(self, application_id, token.into(), message_id, fields)
+    }
+
+    /// Delete a followup message; pass [`crate::builders::ORIGINAL_RESPONSE`]
+    /// as the message ID to delete the interaction's initial response.
+    pub fn delete_followup(
+        &self,
+        application_id: ApplicationId,
+        token: impl Into<String>,
+        message_id: impl core::fmt::Display,
+    ) -> DeleteFollowup<'_> {
+        DeleteFollowup::new(self, application_id, token.into(), message_id)
     }
 }
