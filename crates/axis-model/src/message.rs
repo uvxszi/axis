@@ -165,6 +165,9 @@ pub struct Message {
     pub id: MessageId,
     /// The ID of the channel the message was sent in.
     pub channel_id: ChannelId,
+    /// The guild the message was sent in, when applicable (absent in DMs
+    /// and ephemeral messages).
+    pub guild_id: Option<GuildId>,
     /// The author. May be a webhook pseudo-user; for some gateway events
     /// this is a partial user.
     pub author: User,

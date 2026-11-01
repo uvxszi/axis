@@ -410,3 +410,31 @@ impl<'a> DeleteChannelPermission<'a> {
 }
 
 into_future!(DeleteChannelPermission<'a> => Result<()>);
+
+/// Builder for showing a typing indicator in a channel
+/// (`POST /channels/{id}/typing`).
+///
+/// The indicator lasts ~10 seconds or until a message is sent.
+#[derive(Debug)]
+pub struct TriggerTyping<'a> {
+    http: &'a Http,
+    channel_id: ChannelId,
+}
+
+impl<'a> TriggerTyping<'a> {
+    pub(crate) fn new(http: &'a Http, channel_id: ChannelId) -> Self {
+        Self { http, channel_id }
+    }
+
+    pub(crate) async fn execute(self) -> Result<()> {
+        let route = Route::with_major(
+            reqwest::Method::POST,
+            "/channels/{channel_id}/typing",
+            format!("/channels/{}/typing", self.channel_id),
+            self.channel_id.get(),
+        );
+        self.http.empty(route, None).await
+    }
+}
+
+into_future!(TriggerTyping<'a> => Result<()>);

@@ -20,7 +20,7 @@ use crate::{
         EditChannelPermission, EditFollowup, EditMember, EditMessage, EditRole, GetChannel,
         GetGlobalCommands, GetGuild, GetGuildCommandPermissions, GetMember, GetMessage,
         GetMessages, KickMember, RespondToAutocomplete, RespondToInteraction,
-        SetGuildCommandPermissions, UnbanMember,
+        SetGuildCommandPermissions, TriggerTyping, UnbanMember,
     },
     client::Http,
     routing::Route,
@@ -196,6 +196,11 @@ impl Http {
         user_id: UserId,
     ) -> DeleteUserReaction<'_> {
         DeleteUserReaction::new(self, channel_id, message_id, emoji, user_id)
+    }
+
+    /// Show a typing indicator in a channel.
+    pub fn trigger_typing(&self, channel_id: ChannelId) -> TriggerTyping<'_> {
+        TriggerTyping::new(self, channel_id)
     }
 
     /// Remove all reactions on a message.

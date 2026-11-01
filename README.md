@@ -247,12 +247,15 @@ async fn main() -> Result<(), AxisError> {
 - Privileged intents (`GUILD_PRESENCES`, `GUILD_MEMBERS`, `MESSAGE_CONTENT`) must be enabled in the Discord Developer Portal; the library surfaces Discord's close codes 4013/4014 instead of hiding them.
 - Axis is for bot/application accounts only. Automating normal user accounts violates Discord's Terms of Service and is not supported.
 
-## Bot Studio — a desktop app on top of Axis
+## Bot Studio / Axis Agents — a desktop app on top of Axis
 
-[`app/`](app/README.md) contains **Axis Bot Studio**: a small Windows
-desktop application (single ~11 MB `.exe`) that runs a real bot on this
-library — paste your token, edit slash commands in a GUI, sync them to
-Discord, and watch messages and gateway lifecycle live. Build it with
+[`app/`](app/README.md) contains **Axis Agents** (formerly Bot Studio): a
+small Windows desktop application (single ~12 MB `.exe`) that runs a real
+bot on this library — paste your token, edit slash commands, configure an
+**AI agent** (LM Studio, OpenAI, OpenRouter, Groq, or any
+OpenAI-compatible provider) with MCP-style tools that are strictly
+permission-gated to the invoking user's Discord permissions, and watch
+messages and gateway lifecycle live. Build it with
 `cd app && cargo build --release` (kept as a separate workspace because
 the GUI stack needs windowing libraries).
 
