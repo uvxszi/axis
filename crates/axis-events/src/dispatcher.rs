@@ -253,10 +253,7 @@ impl Dispatcher {
                 Ok(ShardEvent::Reconnecting { close_code }) => {
                     // Connected/Resumed have dispatch equivalents (READY,
                     // RESUMED); Reconnecting has none, so it is surfaced.
-                    if let Err(error) = self
-                        .dispatch(Event::Reconnecting { close_code })
-                        .await
-                    {
+                    if let Err(error) = self.dispatch(Event::Reconnecting { close_code }).await {
                         tracing::error!(%error, "event handler failed");
                     }
                 }
