@@ -18,8 +18,8 @@ use crate::{
         DeleteChannelPermission, DeleteFollowup, DeleteGlobalCommand, DeleteGuildCommand,
         DeleteMessage, DeleteOwnReaction, DeleteRole, DeleteUserReaction, EditChannel,
         EditChannelPermission, EditFollowup, EditMember, EditMessage, EditRole, GetChannel,
-        GetGlobalCommands, GetGuild, GetGuildCommandPermissions, GetMember, GetMessage,
-        GetMessages, KickMember, RespondToAutocomplete, RespondToInteraction,
+        GetGlobalCommands, GetGuild, GetGuildChannels, GetGuildCommandPermissions, GetMember,
+        GetMessage, GetMessages, KickMember, RespondToAutocomplete, RespondToInteraction,
         SetGuildCommandPermissions, TriggerTyping, UnbanMember,
     },
     client::Http,
@@ -196,6 +196,11 @@ impl Http {
         user_id: UserId,
     ) -> DeleteUserReaction<'_> {
         DeleteUserReaction::new(self, channel_id, message_id, emoji, user_id)
+    }
+
+    /// List all channels in a guild.
+    pub fn get_guild_channels(&self, guild_id: GuildId) -> GetGuildChannels<'_> {
+        GetGuildChannels::new(self, guild_id)
     }
 
     /// Show a typing indicator in a channel.

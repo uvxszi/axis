@@ -438,3 +438,29 @@ impl<'a> TriggerTyping<'a> {
 }
 
 into_future!(TriggerTyping<'a> => Result<()>);
+
+/// Builder for listing all channels in a guild
+/// (`GET /guilds/{guild_id}/channels`).
+#[derive(Debug)]
+pub struct GetGuildChannels<'a> {
+    http: &'a Http,
+    guild_id: GuildId,
+}
+
+impl<'a> GetGuildChannels<'a> {
+    pub(crate) fn new(http: &'a Http, guild_id: GuildId) -> Self {
+        Self { http, guild_id }
+    }
+
+    pub(crate) async fn execute(self) -> Result<Vec<axis_model::Channel>> {
+        let route = Route::with_major(
+            reqwest::Method::GET,
+            "/guilds/{guild_id}/channels",
+            format!("/guilds/{}/channels", self.guild_id),
+            self.guild_id.get(),
+        );
+        self.http.json(route, None, None).await
+    }
+}
+
+into_future!(GetGuildChannels<'a> => Result<Vec<axis_model::Channel>>);

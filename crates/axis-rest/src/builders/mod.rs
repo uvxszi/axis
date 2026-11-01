@@ -48,7 +48,7 @@ pub use application_command::{
 };
 pub use channel::{
     CreateGuildChannel, DeleteChannel, DeleteChannelPermission, EditChannel, EditChannelPermission,
-    GetChannel, TriggerTyping,
+    GetChannel, GetGuildChannels, TriggerTyping,
 };
 pub use guild::GetGuild;
 pub use interaction::{
