@@ -55,9 +55,16 @@ impl Http {
     /// Call any Discord REST endpoint. `path` is relative to the API base
     /// (e.g. `/channels/123/voice-status`); `reason` goes to the audit log.
     /// Returns the response JSON, or `Value::Null` for empty responses.
-    pub async fn raw(&self, method: &str, path: &str, body: Option<Value>, reason: Option<String>) -> Result<Value> {
-        let method = Method::from_bytes(method.trim().to_uppercase().as_bytes())
-            .map_err(|_| AxisError::InvalidData(InvalidDataError::new(format!("bad HTTP method {method}"))))?;
+    pub async fn raw(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<Value>,
+        reason: Option<String>,
+    ) -> Result<Value> {
+        let method = Method::from_bytes(method.trim().to_uppercase().as_bytes()).map_err(|_| {
+            AxisError::InvalidData(InvalidDataError::new(format!("bad HTTP method {method}")))
+        })?;
         let path = path.trim();
         let path = path
             .trim_start_matches("https://discord.com")
@@ -81,12 +88,16 @@ impl Http {
             .map_err(|error| AxisError::Serialization(SerializationError::Json(error)))?;
         let response = self.send(route, body, None).await?;
         let bytes = response.bytes().await.map_err(|error| {
-            AxisError::Connection(ConnectionError::with_source("failed to read response body", error))
+            AxisError::Connection(ConnectionError::with_source(
+                "failed to read response body",
+                error,
+            ))
         })?;
         if bytes.is_empty() {
             return Ok(Value::Null);
         }
-        serde_json::from_slice(&bytes).map_err(|error| AxisError::Serialization(SerializationError::Json(error)))
+        serde_json::from_slice(&bytes)
+            .map_err(|error| AxisError::Serialization(SerializationError::Json(error)))
     }
 }
 
@@ -100,7 +111,10 @@ mod tests {
             shape("/channels/123/messages/456"),
             ("/channels/{id}/messages/{id}".to_owned(), Some(123))
         );
-        assert_eq!(shape("/guilds/9/members/5"), ("/guilds/{id}/members/{id}".to_owned(), Some(9)));
+        assert_eq!(
+            shape("/guilds/9/members/5"),
+            ("/guilds/{id}/members/{id}".to_owned(), Some(9))
+        );
         assert_eq!(shape("/users/@me"), ("/users/@me".to_owned(), None));
         assert!(std::ptr::eq(intern("x".into()), intern("x".into())));
     }

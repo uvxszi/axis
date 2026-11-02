@@ -48,11 +48,11 @@ async fn main() -> Result<(), AxisError> {
 
 ## Installation
 
-Axis is not published to crates.io yet. Once hosted in a git repository:
+Axis is not published to crates.io yet. Use it from GitHub:
 
 ```toml
 [dependencies]
-axis = { git = "https://example.com/axis" }
+axis = { git = "https://github.com/uvxszi/axis" }
 ```
 
 ## What Phase 4 provides — models and events
@@ -247,17 +247,13 @@ async fn main() -> Result<(), AxisError> {
 - Privileged intents (`GUILD_PRESENCES`, `GUILD_MEMBERS`, `MESSAGE_CONTENT`) must be enabled in the Discord Developer Portal; the library surfaces Discord's close codes 4013/4014 instead of hiding them.
 - Axis is for bot/application accounts only. Automating normal user accounts violates Discord's Terms of Service and is not supported.
 
-## Bot Studio / Axis Agents — a desktop app on top of Axis
+## Related projects
 
-[`app/`](app/README.md) contains **Axis Agents** (formerly Bot Studio): a
-small Windows desktop application (single ~12 MB `.exe`) that runs a real
-bot on this library — paste your token, edit slash commands, configure an
-**AI agent** (LM Studio, OpenAI, OpenRouter, Groq, or any
-OpenAI-compatible provider) with MCP-style tools that are strictly
-permission-gated to the invoking user's Discord permissions, and watch
-messages and gateway lifecycle live. Build it with
-`cd app && cargo build --release` (kept as a separate workspace because
-the GUI stack needs windowing libraries).
+- [**axis-voice**](https://github.com/uvxszi/axis-voice) — voice
+  connections for Axis: join a voice channel, hear people, and speak
+  (Opus and DAVE end-to-end encryption, pure Rust).
+- [**Axis Agents**](https://github.com/uvxszi/axis-agents) — a Windows
+  desktop app that runs AI agents on Discord as Axis bots.
 
 ## Documentation
 

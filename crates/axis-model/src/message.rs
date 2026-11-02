@@ -362,8 +362,14 @@ impl StickerItem {
     pub fn image_url(&self) -> Option<String> {
         match self.format_type {
             3 => None,
-            4 => Some(format!("https://media.discordapp.net/stickers/{}.gif", self.id)),
-            _ => Some(format!("https://media.discordapp.net/stickers/{}.png", self.id)),
+            4 => Some(format!(
+                "https://media.discordapp.net/stickers/{}.gif",
+                self.id
+            )),
+            _ => Some(format!(
+                "https://media.discordapp.net/stickers/{}.png",
+                self.id
+            )),
         }
     }
 }

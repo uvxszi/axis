@@ -508,7 +508,7 @@ impl<'a> SearchMembers<'a> {
                 "member search limit must be 1-1000",
             ));
         }
-        let query = vec![
+        let query = [
             ("query", self.query.clone()),
             ("limit", self.limit.to_string()),
         ];

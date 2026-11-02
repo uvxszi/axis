@@ -213,7 +213,10 @@ impl<'a> CreateFollowup<'a> {
             "",
         );
         if self.files.is_empty() {
-            return self.http.json(route, Some(serialize(&self.data)?), None).await;
+            return self
+                .http
+                .json(route, Some(serialize(&self.data)?), None)
+                .await;
         }
         let mut body: serde_json::Value = serde_json::from_slice(&serialize(&self.data)?)
             .map_err(|error| AxisError::Serialization(error.into()))?;
@@ -224,7 +227,8 @@ impl<'a> CreateFollowup<'a> {
                 .map(|(id, file)| serde_json::json!({ "id": id, "filename": file.filename }))
                 .collect(),
         );
-        let body = serde_json::to_vec(&body).map_err(|error| AxisError::Serialization(error.into()))?;
+        let body =
+            serde_json::to_vec(&body).map_err(|error| AxisError::Serialization(error.into()))?;
         self.http.json_with_files(route, body, self.files).await
     }
 }
