@@ -22,6 +22,8 @@ pub(crate) struct Route {
     /// A sanitized path for error reporting — routes that embed secrets
     /// (interaction tokens) must never leak them into errors or logs.
     pub display: Option<String>,
+    /// An audit log reason, sent as `X-Audit-Log-Reason`.
+    pub reason: Option<String>,
 }
 
 impl Route {
@@ -33,6 +35,7 @@ impl Route {
             path,
             major: None,
             display: None,
+            reason: None,
         }
     }
 
@@ -49,6 +52,7 @@ impl Route {
             path,
             major: Some(major),
             display: None,
+            reason: None,
         }
     }
 
@@ -56,6 +60,12 @@ impl Route {
     /// secrets (e.g. interaction tokens) must set a sanitized form here.
     pub(crate) fn displaying(mut self, display: impl Into<String>) -> Self {
         self.display = Some(display.into());
+        self
+    }
+
+    /// Attach an audit log reason (shown in the guild's audit log).
+    pub(crate) fn with_reason(mut self, reason: Option<String>) -> Self {
+        self.reason = reason.filter(|reason| !reason.trim().is_empty());
         self
     }
 

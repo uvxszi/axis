@@ -7,7 +7,7 @@ use axis_core::{
     ChannelId, GenericId, GuildId, Permissions,
     error::{AxisError, Result},
 };
-use axis_model::{Channel, ChannelType, OverwriteType};
+use axis_model::{Channel, ChannelType, OverwriteType, PermissionOverwrite};
 
 use crate::{client::Http, routing::Route};
 
@@ -43,6 +43,7 @@ pub struct CreateGuildChannel<'a> {
     http: &'a Http,
     guild_id: GuildId,
     fields: CreateGuildChannelFields,
+    reason: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -64,6 +65,8 @@ struct CreateGuildChannelFields {
     nsfw: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     parent_id: Option<ChannelId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    permission_overwrites: Option<Vec<PermissionOverwrite>>,
 }
 
 impl<'a> CreateGuildChannel<'a> {
@@ -75,7 +78,21 @@ impl<'a> CreateGuildChannel<'a> {
                 name: name.into(),
                 ..CreateGuildChannelFields::default()
             },
+            reason: None,
         }
+    }
+
+    /// Set the channel's permission overwrites (e.g. deny `@everyone`
+    /// `VIEW_CHANNEL` for a private channel).
+    pub fn permission_overwrites(mut self, overwrites: Vec<PermissionOverwrite>) -> Self {
+        self.fields.permission_overwrites = Some(overwrites);
+        self
+    }
+
+    /// Record a reason in the guild's audit log.
+    pub fn reason(mut self, reason: impl Into<String>) -> Self {
+        self.reason = Some(reason.into());
+        self
     }
 
     /// Set the channel type (defaults to a guild text channel).
@@ -150,7 +167,8 @@ impl<'a> CreateGuildChannel<'a> {
             "/guilds/{guild_id}/channels",
             format!("/guilds/{}/channels", self.guild_id),
             self.guild_id.get(),
-        );
+        )
+        .with_reason(self.reason);
         self.http.json(route, Some(body), None).await
     }
 }
@@ -165,6 +183,7 @@ pub struct EditChannel<'a> {
     http: &'a Http,
     channel_id: ChannelId,
     fields: EditChannelFields,
+    reason: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -185,6 +204,14 @@ struct EditChannelFields {
     nsfw: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     parent_id: Option<ChannelId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    archived: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    locked: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    auto_archive_duration: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    applied_tags: Option<Vec<GenericId>>,
 }
 
 impl<'a> EditChannel<'a> {
@@ -193,7 +220,39 @@ impl<'a> EditChannel<'a> {
             http,
             channel_id,
             fields: EditChannelFields::default(),
+            reason: None,
         }
+    }
+
+    /// Archive or unarchive a thread.
+    pub fn archived(mut self, archived: bool) -> Self {
+        self.fields.archived = Some(archived);
+        self
+    }
+
+    /// Lock or unlock a thread (locked threads only reopen for moderators).
+    pub fn locked(mut self, locked: bool) -> Self {
+        self.fields.locked = Some(locked);
+        self
+    }
+
+    /// Set a thread's auto-archive duration in minutes (60, 1440, 4320,
+    /// or 10080).
+    pub fn auto_archive_duration(mut self, minutes: u32) -> Self {
+        self.fields.auto_archive_duration = Some(minutes);
+        self
+    }
+
+    /// Replace a forum post's applied tags.
+    pub fn applied_tags(mut self, tags: Vec<GenericId>) -> Self {
+        self.fields.applied_tags = Some(tags);
+        self
+    }
+
+    /// Record a reason in the guild's audit log.
+    pub fn reason(mut self, reason: impl Into<String>) -> Self {
+        self.reason = Some(reason.into());
+        self
     }
 
     /// Rename the channel.
@@ -270,7 +329,8 @@ impl<'a> EditChannel<'a> {
             "/channels/{channel_id}",
             format!("/channels/{}", self.channel_id),
             self.channel_id.get(),
-        );
+        )
+        .with_reason(self.reason);
         self.http.json(route, Some(body), None).await
     }
 }

@@ -15,7 +15,7 @@ tokio.workspace = true
 tracing.workspace = true
 
 # HTTPS via rustls: no OpenSSL dependency, works on all platforms.
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
 
 [dev-dependencies]
 # Local HTTP mock server for request/response tests.

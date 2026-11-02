@@ -113,7 +113,10 @@ pub mod prelude {
             SerializationError,
         },
         events::{Dispatcher, Event},
-        gateway::{EventStream, Shard, ShardBuilder, ShardEvent},
+        gateway::{
+            Activity, EventStream, OnlineStatus, Presence, Shard, ShardBuilder, ShardEvent,
+            ShardMessenger,
+        },
         id::{
             ApplicationCommandId, ApplicationId, AuditLogEntryId, AutoModRuleId, ChannelId,
             EmojiId, GenericId, GuildId, Id, IntegrationId, InteractionId, MessageId, RoleId,

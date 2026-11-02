@@ -169,6 +169,7 @@ pub struct CreateFollowup<'a> {
     application_id: ApplicationId,
     token: String,
     data: InteractionMessageCallbackData,
+    files: Vec<crate::client::FileUpload>,
 }
 
 impl<'a> CreateFollowup<'a> {
@@ -183,7 +184,17 @@ impl<'a> CreateFollowup<'a> {
             application_id,
             token,
             data,
+            files: Vec::new(),
         }
+    }
+
+    /// Attach a file (images preview inline).
+    pub fn file(mut self, filename: impl Into<String>, bytes: Vec<u8>) -> Self {
+        self.files.push(crate::client::FileUpload {
+            filename: filename.into(),
+            bytes,
+        });
+        self
     }
 
     /// Make the followup ephemeral — visible only to the invoking user.
@@ -201,9 +212,20 @@ impl<'a> CreateFollowup<'a> {
             self.application_id,
             "",
         );
-        self.http
-            .json(route, Some(serialize(&self.data)?), None)
-            .await
+        if self.files.is_empty() {
+            return self.http.json(route, Some(serialize(&self.data)?), None).await;
+        }
+        let mut body: serde_json::Value = serde_json::from_slice(&serialize(&self.data)?)
+            .map_err(|error| AxisError::Serialization(error.into()))?;
+        body["attachments"] = serde_json::Value::Array(
+            self.files
+                .iter()
+                .enumerate()
+                .map(|(id, file)| serde_json::json!({ "id": id, "filename": file.filename }))
+                .collect(),
+        );
+        let body = serde_json::to_vec(&body).map_err(|error| AxisError::Serialization(error.into()))?;
+        self.http.json_with_files(route, body, self.files).await
     }
 }
 

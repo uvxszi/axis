@@ -29,6 +29,17 @@ pub struct AuditLogEntry {
     pub reason: Option<String>,
 }
 
+/// The response of `GET /guilds/{id}/audit-logs`: entries plus the users
+/// they reference.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AuditLog {
+    /// The entries, newest first.
+    pub audit_log_entries: Vec<AuditLogEntry>,
+    /// Users referenced by the entries.
+    #[serde(default)]
+    pub users: Vec<crate::user::User>,
+}
+
 /// One property change inside an audit log entry.
 ///
 /// `new_value` absent while `old_value` present means the property was

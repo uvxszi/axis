@@ -48,6 +48,7 @@ pub struct KickMember<'a> {
     http: &'a Http,
     guild_id: GuildId,
     user_id: UserId,
+    reason: Option<String>,
 }
 
 impl<'a> KickMember<'a> {
@@ -56,7 +57,14 @@ impl<'a> KickMember<'a> {
             http,
             guild_id,
             user_id,
+            reason: None,
         }
+    }
+
+    /// Record a reason in the guild's audit log.
+    pub fn reason(mut self, reason: impl Into<String>) -> Self {
+        self.reason = Some(reason.into());
+        self
     }
 
     pub(crate) async fn execute(self) -> Result<()> {
@@ -65,7 +73,8 @@ impl<'a> KickMember<'a> {
             "/guilds/{guild_id}/members/{user_id}",
             format!("/guilds/{}/members/{}", self.guild_id, self.user_id),
             self.guild_id.get(),
-        );
+        )
+        .with_reason(self.reason);
         self.http.empty(route, None).await
     }
 }
@@ -79,6 +88,7 @@ pub struct BanMember<'a> {
     guild_id: GuildId,
     user_id: UserId,
     delete_message_seconds: Option<u32>,
+    reason: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -94,7 +104,14 @@ impl<'a> BanMember<'a> {
             guild_id,
             user_id,
             delete_message_seconds: None,
+            reason: None,
         }
+    }
+
+    /// Record a reason in the guild's audit log.
+    pub fn reason(mut self, reason: impl Into<String>) -> Self {
+        self.reason = Some(reason.into());
+        self
     }
 
     /// Also delete messages the member sent in the last `seconds` seconds
@@ -128,7 +145,8 @@ impl<'a> BanMember<'a> {
             "/guilds/{guild_id}/bans/{user_id}",
             format!("/guilds/{}/bans/{}", self.guild_id, self.user_id),
             self.guild_id.get(),
-        );
+        )
+        .with_reason(self.reason);
         self.http.empty(route, body).await
     }
 }
@@ -178,6 +196,7 @@ pub struct EditMember<'a> {
     guild_id: GuildId,
     user_id: UserId,
     fields: EditMemberFields,
+    reason: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -194,6 +213,9 @@ struct EditMemberFields {
     #[serde(rename = "communication_disabled_until")]
     #[serde(skip_serializing_if = "Option::is_none")]
     timeout_until: Option<Option<Timestamp>>,
+    /// `Some(None)` serializes as `null` (disconnect from voice).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    channel_id: Option<Option<axis_core::ChannelId>>,
 }
 
 impl<'a> EditMember<'a> {
@@ -203,7 +225,27 @@ impl<'a> EditMember<'a> {
             guild_id,
             user_id,
             fields: EditMemberFields::default(),
+            reason: None,
         }
+    }
+
+    /// Record a reason in the guild's audit log.
+    pub fn reason(mut self, reason: impl Into<String>) -> Self {
+        self.reason = Some(reason.into());
+        self
+    }
+
+    /// Move the member to another voice channel (they must already be
+    /// connected to voice).
+    pub fn move_to_voice(mut self, channel_id: axis_core::ChannelId) -> Self {
+        self.fields.channel_id = Some(Some(channel_id));
+        self
+    }
+
+    /// Disconnect the member from voice (sends `channel_id: null`).
+    pub fn disconnect_voice(mut self) -> Self {
+        self.fields.channel_id = Some(None);
+        self
     }
 
     /// Set the member's nickname.
@@ -266,7 +308,8 @@ impl<'a> EditMember<'a> {
             "/guilds/{guild_id}/members/{user_id}",
             format!("/guilds/{}/members/{}", self.guild_id, self.user_id),
             self.guild_id.get(),
-        );
+        )
+        .with_reason(self.reason);
         self.http.json(route, Some(body), None).await
     }
 }

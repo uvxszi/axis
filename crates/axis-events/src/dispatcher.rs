@@ -42,6 +42,13 @@ struct HandlerTables {
     role_update: Vec<TypedHandler<axis_model::GuildRoleChange>>,
     role_delete: Vec<TypedHandler<axis_model::GuildRoleDelete>>,
     interaction_create: Vec<TypedHandler<axis_model::Interaction>>,
+    thread_create: Vec<TypedHandler<axis_model::Channel>>,
+    thread_update: Vec<TypedHandler<axis_model::Channel>>,
+    thread_delete: Vec<TypedHandler<axis_model::Channel>>,
+    voice_state_update: Vec<TypedHandler<axis_model::VoiceState>>,
+    voice_server_update: Vec<TypedHandler<axis_model::VoiceServerUpdate>>,
+    typing_start: Vec<TypedHandler<axis_model::TypingStart>>,
+    guild_members_chunk: Vec<TypedHandler<axis_model::GuildMembersChunk>>,
 }
 
 impl std::fmt::Debug for HandlerTables {
@@ -69,6 +76,13 @@ impl std::fmt::Debug for HandlerTables {
             .field("role_update", &self.role_update.len())
             .field("role_delete", &self.role_delete.len())
             .field("interaction_create", &self.interaction_create.len())
+            .field("thread_create", &self.thread_create.len())
+            .field("thread_update", &self.thread_update.len())
+            .field("thread_delete", &self.thread_delete.len())
+            .field("voice_state_update", &self.voice_state_update.len())
+            .field("voice_server_update", &self.voice_server_update.len())
+            .field("typing_start", &self.typing_start.len())
+            .field("guild_members_chunk", &self.guild_members_chunk.len())
             .finish()
     }
 }
@@ -115,6 +129,13 @@ registration! {
     on_role_update => role_update: axis_model::GuildRoleChange,
     on_role_delete => role_delete: axis_model::GuildRoleDelete,
     on_interaction_create => interaction_create: axis_model::Interaction,
+    on_thread_create => thread_create: axis_model::Channel,
+    on_thread_update => thread_update: axis_model::Channel,
+    on_thread_delete => thread_delete: axis_model::Channel,
+    on_voice_state_update => voice_state_update: axis_model::VoiceState,
+    on_voice_server_update => voice_server_update: axis_model::VoiceServerUpdate,
+    on_typing_start => typing_start: axis_model::TypingStart,
+    on_guild_members_chunk => guild_members_chunk: axis_model::GuildMembersChunk,
 }
 
 /// Routes parsed [`Event`]s to registered handlers.
@@ -214,6 +235,28 @@ impl Dispatcher {
             Event::RoleDelete(payload) => self.run_all(&self.tables.role_delete, payload).await?,
             Event::InteractionCreate(payload) => {
                 self.run_all(&self.tables.interaction_create, payload)
+                    .await?
+            }
+            Event::ThreadCreate(payload) => {
+                self.run_all(&self.tables.thread_create, payload).await?
+            }
+            Event::ThreadUpdate(payload) => {
+                self.run_all(&self.tables.thread_update, payload).await?
+            }
+            Event::ThreadDelete(payload) => {
+                self.run_all(&self.tables.thread_delete, payload).await?
+            }
+            Event::VoiceStateUpdate(payload) => {
+                self.run_all(&self.tables.voice_state_update, payload)
+                    .await?
+            }
+            Event::VoiceServerUpdate(payload) => {
+                self.run_all(&self.tables.voice_server_update, payload)
+                    .await?
+            }
+            Event::TypingStart(payload) => self.run_all(&self.tables.typing_start, payload).await?,
+            Event::GuildMembersChunk(payload) => {
+                self.run_all(&self.tables.guild_members_chunk, payload)
                     .await?
             }
             Event::Unknown { kind, data } => {

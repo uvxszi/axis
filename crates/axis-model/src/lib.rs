@@ -126,6 +126,7 @@ pub mod message;
 pub mod ready;
 pub mod role;
 pub mod user;
+pub mod voice;
 
 pub use application::{Application, PartialApplication};
 pub use application_command::{
@@ -133,8 +134,11 @@ pub use application_command::{
     ApplicationCommandOptionChoice, ApplicationCommandOptionType, ApplicationCommandPermission,
     ApplicationCommandPermissionType, GuildApplicationCommandPermissions,
 };
-pub use audit_log::{AuditEntryInfo, AuditLogAction, AuditLogChange, AuditLogEntry};
-pub use channel::{Channel, ChannelType, OverwriteType, PermissionOverwrite, VideoQualityMode};
+pub use audit_log::{AuditEntryInfo, AuditLog, AuditLogAction, AuditLogChange, AuditLogEntry};
+pub use channel::{
+    ActiveThreads, Channel, ChannelType, ForumTag, Invite, OverwriteType, PermissionOverwrite,
+    ThreadMember, ThreadMetadata, VideoQualityMode,
+};
 pub use emoji::Emoji;
 pub use guild::{
     DefaultMessageNotificationLevel, ExplicitContentFilter, Guild, GuildCreate, MfaLevel,
@@ -147,10 +151,12 @@ pub use interaction::{
 };
 pub use member::{Member, MemberAdd, MemberRemove, MemberUpdate};
 pub use message::{
-    Attachment, Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedImage, EmbedThumbnail, Message,
-    MessageDelete, MessageDeleteBulk, MessageFlags, MessageReactionAdd, MessageReactionRemove,
-    MessageReference, MessageType, PartialMessage, Reaction,
+    AllowedMentions, Attachment, Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedImage,
+    EmbedThumbnail, Message, MessageDelete, MessageDeleteBulk, MessageFlags, MessagePin,
+    MessageReactionAdd, MessageReactionRemove, MessageReference, MessageType, PartialMessage,
+    PinnedMessages, PollAnswer, PollCreate, PollMedia, Reaction, StickerItem,
 };
 pub use ready::Ready;
 pub use role::{GuildRoleChange, GuildRoleDelete, Role, RoleColors};
 pub use user::{PremiumType, User, UserFlags};
+pub use voice::{GuildMembersChunk, TypingStart, VoiceServerUpdate, VoiceState};

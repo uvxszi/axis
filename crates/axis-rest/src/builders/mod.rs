@@ -34,6 +34,7 @@ macro_rules! into_future {
 
 pub mod application_command;
 pub mod channel;
+pub mod community;
 pub mod guild;
 pub mod interaction;
 pub mod member;
@@ -49,6 +50,12 @@ pub use application_command::{
 pub use channel::{
     CreateGuildChannel, DeleteChannel, DeleteChannelPermission, EditChannel, EditChannelPermission,
     GetChannel, GetGuildChannels, TriggerTyping,
+};
+pub use community::{
+    AddThreadMember, CreateDm, CreateForumPost, CreateInvite, EditCurrentMember, GetActiveThreads,
+    GetAuditLog, GetCurrentUser, GetPinnedMessages, GetReactions, GetUser, JoinThread, ListMembers,
+    PinMessage, RemoveThreadMember, SearchMembers, StartThread, StartThreadFromMessage,
+    UnpinMessage,
 };
 pub use guild::GetGuild;
 pub use interaction::{

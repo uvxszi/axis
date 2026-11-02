@@ -69,6 +69,20 @@ pub enum Event {
     /// `INTERACTION_CREATE`: command invocations, component presses,
     /// autocomplete requests, and modal submissions.
     InteractionCreate(Interaction),
+    /// `THREAD_CREATE`.
+    ThreadCreate(axis_model::Channel),
+    /// `THREAD_UPDATE`.
+    ThreadUpdate(axis_model::Channel),
+    /// `THREAD_DELETE`.
+    ThreadDelete(axis_model::Channel),
+    /// `VOICE_STATE_UPDATE`.
+    VoiceStateUpdate(axis_model::VoiceState),
+    /// `VOICE_SERVER_UPDATE`.
+    VoiceServerUpdate(axis_model::VoiceServerUpdate),
+    /// `TYPING_START`.
+    TypingStart(axis_model::TypingStart),
+    /// `GUILD_MEMBERS_CHUNK`.
+    GuildMembersChunk(axis_model::GuildMembersChunk),
     /// The shard lost its connection and is re-establishing it. The happy
     /// paths surface as [`Event::Ready`] / [`Event::Resumed`]; this event
     /// covers the gap between a disconnect and the next READY so
@@ -116,6 +130,13 @@ impl Event {
             "GUILD_ROLE_UPDATE" => Self::RoleUpdate(parse(data)?),
             "GUILD_ROLE_DELETE" => Self::RoleDelete(parse(data)?),
             "INTERACTION_CREATE" => Self::InteractionCreate(parse(data)?),
+            "THREAD_CREATE" => Self::ThreadCreate(parse(data)?),
+            "THREAD_UPDATE" => Self::ThreadUpdate(parse(data)?),
+            "THREAD_DELETE" => Self::ThreadDelete(parse(data)?),
+            "VOICE_STATE_UPDATE" => Self::VoiceStateUpdate(parse(data)?),
+            "VOICE_SERVER_UPDATE" => Self::VoiceServerUpdate(parse(data)?),
+            "TYPING_START" => Self::TypingStart(parse(data)?),
+            "GUILD_MEMBERS_CHUNK" => Self::GuildMembersChunk(parse(data)?),
             other => Self::Unknown {
                 kind: other.to_owned(),
                 data,

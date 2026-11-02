@@ -53,9 +53,11 @@
 //! Session-start limits from `GET /gateway/bot` are not consulted yet.
 
 mod connection;
+mod presence;
 mod protocol;
 mod session;
 mod shard;
 
+pub use presence::{Activity, ActivityKind, OnlineStatus, Presence, ShardMessenger};
 pub use protocol::DEFAULT_GATEWAY_URL;
 pub use shard::{EventStream, Shard, ShardBuilder, ShardEvent};

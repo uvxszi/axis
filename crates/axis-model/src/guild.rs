@@ -187,6 +187,9 @@ pub struct GuildCreate {
     pub channels: Option<Vec<Channel>>,
     /// Active threads the bot can view, when Discord included them.
     pub threads: Option<Vec<Channel>>,
+    /// Members currently in voice channels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voice_states: Option<Vec<crate::voice::VoiceState>>,
 }
 
 #[cfg(test)]

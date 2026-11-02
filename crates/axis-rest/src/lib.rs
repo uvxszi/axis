@@ -48,12 +48,13 @@
 mod client;
 mod endpoints;
 mod ratelimit;
+mod raw;
 mod routing;
 
 pub mod builders;
 
 pub use builders::*;
-pub use client::{API_BASE, Http, HttpBuilder};
+pub use client::{API_BASE, FileUpload, Http, HttpBuilder};
 
 #[cfg(test)]
 pub(crate) mod test_support;

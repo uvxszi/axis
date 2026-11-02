@@ -18,6 +18,7 @@ use axis_core::{
 
 use crate::{
     connection::{self, Incoming, WsSink, WsSource},
+    presence::{Presence, ShardMessenger},
     protocol::{self, ConnectionProperties, IdentifyBody, Opcode, Payload, ResumeBody},
     session::Session,
 };
@@ -99,6 +100,7 @@ struct ShardConfig {
     shard: Option<[u64; 2]>,
     gateway_url: String,
     max_reconnect_attempts: Option<u32>,
+    large_threshold: Option<u8>,
 }
 
 /// A single gateway connection: identify, heartbeat, resume, and
@@ -115,6 +117,8 @@ struct ShardConfig {
 pub struct Shard {
     config: std::sync::Arc<ShardConfig>,
     shutdown: watch::Sender<bool>,
+    messenger: ShardMessenger,
+    commands: std::sync::Mutex<Option<mpsc::UnboundedReceiver<Payload>>>,
 }
 
 impl Shard {
@@ -129,10 +133,21 @@ impl Shard {
     /// stream lives until the shard shuts down or a fatal error occurs.
     pub fn start(&self) -> EventStream {
         let (sender, receiver) = mpsc::unbounded_channel();
+        // A second `start` gets a fresh (inert) command queue; commands go
+        // to the first runner only.
+        let commands = self
+            .commands
+            .lock()
+            .expect("command queue lock poisoned")
+            .take()
+            .unwrap_or_else(|| mpsc::unbounded_channel().1);
         let runner = Runner {
             config: std::sync::Arc::clone(&self.config),
             session: Session::default(),
             events: sender,
+            commands,
+            presence: std::sync::Arc::clone(&self.messenger.presence),
+            latency: std::sync::Arc::clone(&self.messenger.latency),
         };
         let shutdown = self.shutdown.subscribe();
         tokio::spawn(runner.run(shutdown));
@@ -143,6 +158,12 @@ impl Shard {
     /// 1000, the heartbeat loop stops, and the event stream ends.
     pub fn shutdown(&self) {
         let _ = self.shutdown.send(true);
+    }
+
+    /// A handle for sending gateway commands (presence, voice state,
+    /// member requests) to this shard.
+    pub fn messenger(&self) -> ShardMessenger {
+        self.messenger.clone()
     }
 }
 
@@ -162,6 +183,8 @@ pub struct ShardBuilder {
     shard: Option<[u64; 2]>,
     gateway_url: String,
     max_reconnect_attempts: Option<u32>,
+    presence: Option<Presence>,
+    large_threshold: Option<u8>,
 }
 
 impl ShardBuilder {
@@ -172,7 +195,22 @@ impl ShardBuilder {
             shard: None,
             gateway_url: protocol::DEFAULT_GATEWAY_URL.to_owned(),
             max_reconnect_attempts: None,
+            presence: None,
+            large_threshold: None,
         }
+    }
+
+    /// The presence to identify with (and to restore after reconnects).
+    pub fn presence(mut self, presence: Presence) -> Self {
+        self.presence = Some(presence);
+        self
+    }
+
+    /// Member count (50–250) above which a guild counts as "large" and
+    /// `GUILD_CREATE` omits offline members.
+    pub fn large_threshold(mut self, threshold: u8) -> Self {
+        self.large_threshold = Some(threshold.clamp(50, 250));
+        self
     }
 
     /// Set this shard's index and the total shard count, per Discord's
@@ -210,6 +248,7 @@ impl ShardBuilder {
         }
 
         let (shutdown, _) = watch::channel(false);
+        let (command_sender, command_receiver) = mpsc::unbounded_channel();
         Ok(Shard {
             config: std::sync::Arc::new(ShardConfig {
                 token,
@@ -217,8 +256,15 @@ impl ShardBuilder {
                 shard: self.shard,
                 gateway_url: self.gateway_url,
                 max_reconnect_attempts: self.max_reconnect_attempts,
+                large_threshold: self.large_threshold,
             }),
             shutdown,
+            messenger: ShardMessenger {
+                sender: command_sender,
+                presence: std::sync::Arc::new(std::sync::Mutex::new(self.presence)),
+                latency: std::sync::Arc::default(),
+            },
+            commands: std::sync::Mutex::new(Some(command_receiver)),
         })
     }
 }
@@ -263,6 +309,12 @@ struct Runner {
     config: std::sync::Arc<ShardConfig>,
     session: Session,
     events: mpsc::UnboundedSender<Result<ShardEvent, AxisError>>,
+    /// Client commands queued through a [`ShardMessenger`].
+    commands: mpsc::UnboundedReceiver<Payload>,
+    /// The latest presence, sent with every Identify.
+    presence: std::sync::Arc<std::sync::Mutex<Option<Presence>>>,
+    /// Heartbeat round trip in ms, shared with the messenger.
+    latency: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl Runner {
@@ -398,6 +450,13 @@ impl Runner {
                     },
                     shard: self.config.shard,
                     compress: false,
+                    presence: self
+                        .presence
+                        .lock()
+                        .expect("presence lock poisoned")
+                        .as_ref()
+                        .map(Presence::to_json),
+                    large_threshold: self.config.large_threshold,
                 },
             )
         };
@@ -428,6 +487,7 @@ impl Runner {
         let heartbeat_sleep = tokio::time::sleep_until(heartbeat_deadline);
         tokio::pin!(heartbeat_sleep);
         let mut awaiting_ack = false;
+        let mut beat_sent = std::time::Instant::now();
 
         loop {
             tokio::select! {
@@ -446,6 +506,12 @@ impl Runner {
                         }
                     }
                 }
+                Some(command) = self.commands.recv() => {
+                    if let Err(error) = connection::send(sink, &command).await {
+                        tracing::warn!(%error, "failed to send a gateway command");
+                        return ConnectionOutcome::Reconnect(ReconnectReason::TransportLost);
+                    }
+                }
                 incoming = connection::next(source) => match incoming {
                     Err(error) => {
                         tracing::warn!(%error, "gateway transport error");
@@ -459,7 +525,13 @@ impl Runner {
                         return self.on_closed(code, reason);
                     }
                     Ok(Some(Incoming::Payload(payload))) => match payload.op {
-                        Opcode::HeartbeatAck => awaiting_ack = false,
+                        Opcode::HeartbeatAck => {
+                            if awaiting_ack {
+                                let ms = beat_sent.elapsed().as_millis().clamp(1, u64::MAX as u128) as u64;
+                                self.latency.store(ms, std::sync::atomic::Ordering::Relaxed);
+                            }
+                            awaiting_ack = false;
+                        }
                         Opcode::Heartbeat => {
                             // Discord asked for a heartbeat; answer now.
                             let beat = heartbeat_payload(self.session.sequence());
@@ -495,6 +567,7 @@ impl Runner {
                         return ConnectionOutcome::Reconnect(ReconnectReason::TransportLost);
                     }
                     awaiting_ack = true;
+                    beat_sent = std::time::Instant::now();
                     heartbeat_deadline = heartbeat_deadline
                         .checked_add(interval)
                         .unwrap_or_else(|| tokio::time::Instant::now() + interval);

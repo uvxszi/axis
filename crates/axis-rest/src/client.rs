@@ -63,6 +63,40 @@ impl Http {
         body: Option<Vec<u8>>,
         query: Option<&[(&'static str, String)]>,
     ) -> Result<reqwest::Response> {
+        let payload = match body {
+            Some(body) => Payload::Json(body),
+            None => Payload::Empty,
+        };
+        self.send_payload(route, payload, query).await
+    }
+
+    /// Send a `multipart/form-data` request (JSON payload plus files) and
+    /// deserialize the JSON response.
+    pub(crate) async fn json_with_files<T: DeserializeOwned>(
+        &self,
+        route: Route,
+        json: Vec<u8>,
+        files: Vec<FileUpload>,
+    ) -> Result<T> {
+        let response = self
+            .send_payload(route, Payload::Multipart { json, files }, None)
+            .await?;
+        let bytes = response.bytes().await.map_err(|error| {
+            AxisError::Connection(ConnectionError::with_source(
+                "failed to read response body",
+                error,
+            ))
+        })?;
+        serde_json::from_slice(&bytes)
+            .map_err(|error| AxisError::Serialization(SerializationError::Json(error)))
+    }
+
+    async fn send_payload(
+        &self,
+        route: Route,
+        payload: Payload,
+        query: Option<&[(&'static str, String)]>,
+    ) -> Result<reqwest::Response> {
         let url = format!("{}{}", self.api_base, route.path);
         let mut rate_limit_attempts: u32 = 0;
         let mut transient_attempts: u32 = 0;
@@ -74,13 +108,37 @@ impl Http {
                 .client
                 .request(route.method.clone(), &url)
                 .header(AUTHORIZATION, &self.auth_header);
-            if let Some(body) = &body {
-                request = request
-                    .header(CONTENT_TYPE, "application/json")
-                    .body(body.clone());
+            match &payload {
+                Payload::Empty => {}
+                Payload::Json(body) => {
+                    request = request
+                        .header(CONTENT_TYPE, "application/json")
+                        .body(body.clone());
+                }
+                Payload::Multipart { json, files } => {
+                    // A form is consumed by sending, so it is rebuilt for
+                    // every attempt.
+                    let mut form = reqwest::multipart::Form::new().part(
+                        "payload_json",
+                        reqwest::multipart::Part::bytes(json.clone())
+                            .mime_str("application/json")
+                            .expect("static mime type"),
+                    );
+                    for (index, file) in files.iter().enumerate() {
+                        form = form.part(
+                            format!("files[{index}]"),
+                            reqwest::multipart::Part::bytes(file.bytes.clone())
+                                .file_name(file.filename.clone()),
+                        );
+                    }
+                    request = request.multipart(form);
+                }
             }
             if let Some(query) = query {
                 request = request.query(query);
+            }
+            if let Some(reason) = &route.reason {
+                request = request.header("X-Audit-Log-Reason", encode_audit_reason(reason));
             }
 
             debug!(method = %route.method, path = %route.path, "sending request");
@@ -216,6 +274,50 @@ impl Http {
         let millis = 500_u64.saturating_mul(1 << shift).min(5_000);
         tokio::time::sleep(Duration::from_millis(millis)).await;
     }
+}
+
+/// A file to upload with a message.
+#[derive(Clone)]
+pub struct FileUpload {
+    /// The file name shown in Discord (its extension decides the preview).
+    pub filename: String,
+    /// The file contents.
+    pub bytes: Vec<u8>,
+}
+
+impl std::fmt::Debug for FileUpload {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FileUpload")
+            .field("filename", &self.filename)
+            .field("bytes", &self.bytes.len())
+            .finish()
+    }
+}
+
+/// A request body.
+enum Payload {
+    Empty,
+    Json(Vec<u8>),
+    Multipart {
+        json: Vec<u8>,
+        files: Vec<FileUpload>,
+    },
+}
+
+/// Percent-encode an audit log reason: Discord requires the header to be
+/// URL-encoded so non-ASCII reasons survive, and caps it at 512 characters.
+fn encode_audit_reason(reason: &str) -> String {
+    let truncated: String = reason.chars().take(512).collect();
+    let mut out = String::with_capacity(truncated.len());
+    for byte in truncated.as_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b' ' => {
+                out.push(*byte as char)
+            }
+            other => out.push_str(&format!("%{other:02X}")),
+        }
+    }
+    out
 }
 
 /// Parse Discord's error body shape `{"code": 50035, "message": "..."}`,
@@ -415,6 +517,17 @@ mod tests {
         // Non-JSON (e.g. Cloudflare HTML) yields no code or message.
         assert_eq!(parse_error_body("<html>blocked</html>"), (None, None));
         assert_eq!(parse_error_body(""), (None, None));
+    }
+
+    #[test]
+    fn audit_reasons_are_encoded() {
+        assert_eq!(encode_audit_reason("spam links"), "spam links");
+        assert_eq!(
+            encode_audit_reason("raid: 5 accounts"),
+            "raid%3A 5 accounts"
+        );
+        assert_eq!(encode_audit_reason("é"), "%C3%A9");
+        assert_eq!(encode_audit_reason(&"x".repeat(600)).len(), 512);
     }
 
     #[test]

@@ -7,7 +7,7 @@ use axis_core::{
     ChannelId, MessageId,
     error::{AxisError, Result},
 };
-use axis_model::{Embed, Message, MessageFlags, MessageReference};
+use axis_model::{AllowedMentions, Embed, Message, MessageFlags, MessageReference, PollCreate};
 
 use crate::{client::Http, routing::Route};
 
@@ -22,6 +22,7 @@ pub struct CreateMessage<'a> {
     http: &'a Http,
     channel_id: ChannelId,
     fields: CreateMessageFields,
+    files: Vec<crate::client::FileUpload>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -36,15 +37,40 @@ struct CreateMessageFields {
     message_reference: Option<MessageReference>,
     #[serde(skip_serializing_if = "Option::is_none")]
     flags: Option<MessageFlags>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    allowed_mentions: Option<AllowedMentions>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    poll: Option<PollCreate>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    attachments: Option<Vec<serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    components: Option<Vec<serde_json::Value>>,
 }
 
 impl<'a> CreateMessage<'a> {
+    /// Add message components (action rows of buttons and select menus),
+    /// as raw component JSON.
+    pub fn components(mut self, components: Vec<serde_json::Value>) -> Self {
+        self.fields.components = Some(components);
+        self
+    }
+
     pub(crate) fn new(http: &'a Http, channel_id: ChannelId) -> Self {
         Self {
             http,
             channel_id,
             fields: CreateMessageFields::default(),
+            files: Vec::new(),
         }
+    }
+
+    /// Attach a file (up to 10 per message; images preview inline).
+    pub fn file(mut self, filename: impl Into<String>, bytes: Vec<u8>) -> Self {
+        self.files.push(crate::client::FileUpload {
+            filename: filename.into(),
+            bytes,
+        });
+        self
     }
 
     /// Set the message content (up to 2000 characters).
@@ -89,6 +115,20 @@ impl<'a> CreateMessage<'a> {
         self
     }
 
+    /// Restrict which mentions in the content ping (see
+    /// [`AllowedMentions`]). Without this, Discord pings everything the
+    /// content mentions that the bot is allowed to.
+    pub fn allowed_mentions(mut self, allowed: AllowedMentions) -> Self {
+        self.fields.allowed_mentions = Some(allowed);
+        self
+    }
+
+    /// Attach a poll.
+    pub fn poll(mut self, poll: PollCreate) -> Self {
+        self.fields.poll = Some(poll);
+        self
+    }
+
     pub(crate) async fn execute(self) -> Result<Message> {
         let content_chars = self
             .fields
@@ -100,7 +140,22 @@ impl<'a> CreateMessage<'a> {
                 "message content is {content_chars} characters; Discord allows at most 2000"
             )));
         }
+        if let Some(poll) = &self.fields.poll {
+            if !(1..=10).contains(&poll.answers.len()) {
+                return Err(AxisError::invalid_data("a poll needs 1-10 answers"));
+            }
+            if !(1..=768).contains(&poll.duration) {
+                return Err(AxisError::invalid_data("poll duration must be 1-768 hours"));
+            }
+        }
+        if self.files.len() > 10 {
+            return Err(AxisError::invalid_data(
+                "a message can carry at most 10 files",
+            ));
+        }
         if content_chars == 0
+            && self.files.is_empty()
+            && self.fields.poll.is_none()
             && self
                 .fields
                 .embeds
@@ -112,15 +167,29 @@ impl<'a> CreateMessage<'a> {
             ));
         }
 
-        let body = serde_json::to_vec(&self.fields)
-            .map_err(|error| AxisError::Serialization(error.into()))?;
+        let mut fields = self.fields;
+        if !self.files.is_empty() {
+            fields.attachments = Some(
+                self.files
+                    .iter()
+                    .enumerate()
+                    .map(|(id, file)| json!({ "id": id, "filename": file.filename }))
+                    .collect(),
+            );
+        }
+        let body =
+            serde_json::to_vec(&fields).map_err(|error| AxisError::Serialization(error.into()))?;
         let route = Route::with_major(
             reqwest::Method::POST,
             "/channels/{channel_id}/messages",
             format!("/channels/{}/messages", self.channel_id),
             self.channel_id.get(),
         );
-        self.http.json(route, Some(body), None).await
+        if self.files.is_empty() {
+            self.http.json(route, Some(body), None).await
+        } else {
+            self.http.json_with_files(route, body, self.files).await
+        }
     }
 }
 
@@ -147,6 +216,8 @@ struct EditMessageFields {
     embeds: Option<Option<Vec<Embed>>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     flags: Option<MessageFlags>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    allowed_mentions: Option<AllowedMentions>,
 }
 
 impl<'a> EditMessage<'a> {
@@ -190,6 +261,12 @@ impl<'a> EditMessage<'a> {
         self
     }
 
+    /// Restrict which mentions in the new content ping.
+    pub fn allowed_mentions(mut self, allowed: AllowedMentions) -> Self {
+        self.fields.allowed_mentions = Some(allowed);
+        self
+    }
+
     pub(crate) async fn execute(self) -> Result<Message> {
         let content_chars = self
             .fields
@@ -224,6 +301,7 @@ pub struct DeleteMessage<'a> {
     http: &'a Http,
     channel_id: ChannelId,
     message_id: MessageId,
+    reason: Option<String>,
 }
 
 impl<'a> DeleteMessage<'a> {
@@ -232,7 +310,15 @@ impl<'a> DeleteMessage<'a> {
             http,
             channel_id,
             message_id,
+            reason: None,
         }
+    }
+
+    /// Record a reason in the guild's audit log (for deleting others'
+    /// messages).
+    pub fn reason(mut self, reason: impl Into<String>) -> Self {
+        self.reason = Some(reason.into());
+        self
     }
 
     pub(crate) async fn execute(self) -> Result<()> {
@@ -241,7 +327,8 @@ impl<'a> DeleteMessage<'a> {
             "/channels/{channel_id}/messages/{message_id}",
             format!("/channels/{}/messages/{}", self.channel_id, self.message_id),
             self.channel_id.get(),
-        );
+        )
+        .with_reason(self.reason);
         self.http.empty(route, None).await
     }
 }

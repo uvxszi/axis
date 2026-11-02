@@ -228,6 +228,10 @@ pub(crate) struct IdentifyBody<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shard: Option<[u64; 2]>,
     pub compress: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presence: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub large_threshold: Option<u8>,
 }
 
 /// The `properties` object of an Identify payload.

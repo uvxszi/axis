@@ -12,15 +12,18 @@ use axis_model::{
 
 use crate::{
     builders::{
-        AddReaction, BanMember, BulkDeleteMessages, BulkOverwriteGlobalCommands,
-        BulkOverwriteGuildCommands, ClearReactions, CreateFollowup, CreateGlobalCommand,
-        CreateGuildChannel, CreateMessage, CreateRole, DeferInteraction, DeleteChannel,
-        DeleteChannelPermission, DeleteFollowup, DeleteGlobalCommand, DeleteGuildCommand,
-        DeleteMessage, DeleteOwnReaction, DeleteRole, DeleteUserReaction, EditChannel,
-        EditChannelPermission, EditFollowup, EditMember, EditMessage, EditRole, GetChannel,
-        GetGlobalCommands, GetGuild, GetGuildChannels, GetGuildCommandPermissions, GetMember,
-        GetMessage, GetMessages, KickMember, RespondToAutocomplete, RespondToInteraction,
-        SetGuildCommandPermissions, TriggerTyping, UnbanMember,
+        AddReaction, AddThreadMember, BanMember, BulkDeleteMessages, BulkOverwriteGlobalCommands,
+        BulkOverwriteGuildCommands, ClearReactions, CreateDm, CreateFollowup, CreateForumPost,
+        CreateGlobalCommand, CreateGuildChannel, CreateInvite, CreateMessage, CreateRole,
+        DeferInteraction, DeleteChannel, DeleteChannelPermission, DeleteFollowup,
+        DeleteGlobalCommand, DeleteGuildCommand, DeleteMessage, DeleteOwnReaction, DeleteRole,
+        DeleteUserReaction, EditChannel, EditChannelPermission, EditCurrentMember, EditFollowup,
+        EditMember, EditMessage, EditRole, GetActiveThreads, GetAuditLog, GetChannel,
+        GetCurrentUser, GetGlobalCommands, GetGuild, GetGuildChannels, GetGuildCommandPermissions,
+        GetMember, GetMessage, GetMessages, GetPinnedMessages, GetReactions, GetUser, JoinThread,
+        KickMember, ListMembers, PinMessage, RemoveThreadMember, RespondToAutocomplete,
+        RespondToInteraction, SearchMembers, SetGuildCommandPermissions, StartThread,
+        StartThreadFromMessage, TriggerTyping, UnbanMember, UnpinMessage,
     },
     client::Http,
     routing::Route,
@@ -288,6 +291,120 @@ impl Http {
         permissions: Vec<ApplicationCommandPermission>,
     ) -> SetGuildCommandPermissions<'_> {
         SetGuildCommandPermissions::new(self, application_id, guild_id, command_id, permissions)
+    }
+
+    /// Start a public thread from an existing message.
+    pub fn start_thread_from_message(
+        &self,
+        channel_id: ChannelId,
+        message_id: MessageId,
+        name: impl Into<String>,
+    ) -> StartThreadFromMessage<'_> {
+        StartThreadFromMessage::new(self, channel_id, message_id, name.into())
+    }
+
+    /// Start a thread without a starter message (public by default).
+    pub fn start_thread(&self, channel_id: ChannelId, name: impl Into<String>) -> StartThread<'_> {
+        StartThread::new(self, channel_id, name.into())
+    }
+
+    /// Create a post (a thread with a starter message) in a forum or media
+    /// channel.
+    pub fn create_forum_post(
+        &self,
+        channel_id: ChannelId,
+        name: impl Into<String>,
+    ) -> CreateForumPost<'_> {
+        CreateForumPost::new(self, channel_id, name.into())
+    }
+
+    /// Join a thread as the bot.
+    pub fn join_thread(&self, thread_id: ChannelId) -> JoinThread<'_> {
+        JoinThread::new(self, thread_id)
+    }
+
+    /// Add a member to a thread.
+    pub fn add_thread_member(&self, thread_id: ChannelId, user_id: UserId) -> AddThreadMember<'_> {
+        AddThreadMember::new(self, thread_id, user_id)
+    }
+
+    /// Remove a member from a thread.
+    pub fn remove_thread_member(
+        &self,
+        thread_id: ChannelId,
+        user_id: UserId,
+    ) -> RemoveThreadMember<'_> {
+        RemoveThreadMember::new(self, thread_id, user_id)
+    }
+
+    /// List a guild's active threads.
+    pub fn get_active_threads(&self, guild_id: GuildId) -> GetActiveThreads<'_> {
+        GetActiveThreads::new(self, guild_id)
+    }
+
+    /// Pin a message.
+    pub fn pin_message(&self, channel_id: ChannelId, message_id: MessageId) -> PinMessage<'_> {
+        PinMessage::new(self, channel_id, message_id)
+    }
+
+    /// Unpin a message.
+    pub fn unpin_message(&self, channel_id: ChannelId, message_id: MessageId) -> UnpinMessage<'_> {
+        UnpinMessage::new(self, channel_id, message_id)
+    }
+
+    /// List a channel's pinned messages.
+    pub fn get_pinned_messages(&self, channel_id: ChannelId) -> GetPinnedMessages<'_> {
+        GetPinnedMessages::new(self, channel_id)
+    }
+
+    /// List guild members (paginated; needs the `GUILD_MEMBERS` intent).
+    pub fn list_members(&self, guild_id: GuildId) -> ListMembers<'_> {
+        ListMembers::new(self, guild_id)
+    }
+
+    /// Search guild members by username or nickname prefix.
+    pub fn search_members(&self, guild_id: GuildId, query: impl Into<String>) -> SearchMembers<'_> {
+        SearchMembers::new(self, guild_id, query.into())
+    }
+
+    /// Edit the bot's own member in a guild (e.g. its nickname).
+    pub fn edit_current_member(&self, guild_id: GuildId) -> EditCurrentMember<'_> {
+        EditCurrentMember::new(self, guild_id)
+    }
+
+    /// Fetch a user.
+    pub fn get_user(&self, user_id: UserId) -> GetUser<'_> {
+        GetUser::new(self, user_id)
+    }
+
+    /// Fetch the bot's own user.
+    pub fn get_current_user(&self) -> GetCurrentUser<'_> {
+        GetCurrentUser::new(self)
+    }
+
+    /// Open (or fetch) a DM channel with a user.
+    pub fn create_dm(&self, recipient_id: UserId) -> CreateDm<'_> {
+        CreateDm::new(self, recipient_id)
+    }
+
+    /// Read a guild's audit log.
+    pub fn get_audit_log(&self, guild_id: GuildId) -> GetAuditLog<'_> {
+        GetAuditLog::new(self, guild_id)
+    }
+
+    /// List users who reacted to a message with an emoji.
+    pub fn get_reactions(
+        &self,
+        channel_id: ChannelId,
+        message_id: MessageId,
+        emoji: Emoji,
+    ) -> GetReactions<'_> {
+        GetReactions::new(self, channel_id, message_id, emoji)
+    }
+
+    /// Create an invite to a channel.
+    pub fn create_invite(&self, channel_id: ChannelId) -> CreateInvite<'_> {
+        CreateInvite::new(self, channel_id)
     }
 
     /// Respond to an interaction with a message (initial response).

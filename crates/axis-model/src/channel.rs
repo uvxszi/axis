@@ -107,6 +107,151 @@ pub struct Channel {
     pub rtc_region: Option<String>,
     /// The camera video quality mode of a voice channel.
     pub video_quality_mode: Option<VideoQualityMode>,
+    /// Thread-specific state (archived, locked, ...); threads only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_metadata: Option<ThreadMetadata>,
+    /// Approximate number of messages in a thread.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_count: Option<u32>,
+    /// Approximate number of members in a thread (stops counting at 50).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub member_count: Option<u32>,
+    /// Number of messages ever sent in a thread.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_message_sent: Option<u32>,
+    /// Default auto-archive duration (minutes) for new threads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_auto_archive_duration: Option<u32>,
+    /// Tags that can be applied to posts in a forum or media channel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub available_tags: Option<Vec<ForumTag>>,
+    /// Tag IDs applied to a forum post (thread).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub applied_tags: Option<Vec<GenericId>>,
+    /// Channel flags bitfield (e.g. pinned forum post, require tag).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flags: Option<u64>,
+}
+
+impl Channel {
+    /// Whether this channel is a thread (public, private, or announcement).
+    pub fn is_thread(&self) -> bool {
+        matches!(
+            self.r#type,
+            ChannelType::PublicThread
+                | ChannelType::PrivateThread
+                | ChannelType::AnnouncementThread
+        )
+    }
+
+    /// Whether messages can be sent directly in this channel (text-like
+    /// channels and threads; not categories, forums, or voice-only).
+    pub fn is_text_based(&self) -> bool {
+        matches!(
+            self.r#type,
+            ChannelType::GuildText
+                | ChannelType::Dm
+                | ChannelType::GroupDm
+                | ChannelType::GuildAnnouncement
+                | ChannelType::PublicThread
+                | ChannelType::PrivateThread
+                | ChannelType::AnnouncementThread
+                | ChannelType::GuildVoice
+                | ChannelType::GuildStageVoice
+        )
+    }
+
+    /// Whether this is a voice or stage channel.
+    pub fn is_voice(&self) -> bool {
+        matches!(
+            self.r#type,
+            ChannelType::GuildVoice | ChannelType::GuildStageVoice
+        )
+    }
+
+    /// Whether this is a forum or media channel (posts are threads).
+    pub fn is_forum(&self) -> bool {
+        matches!(
+            self.r#type,
+            ChannelType::GuildForum | ChannelType::GuildMedia
+        )
+    }
+}
+
+/// Thread-specific channel state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ThreadMetadata {
+    /// Whether the thread is archived.
+    pub archived: bool,
+    /// Minutes of inactivity before the thread auto-archives.
+    pub auto_archive_duration: u32,
+    /// When the archive status last changed.
+    pub archive_timestamp: Option<Timestamp>,
+    /// Whether the thread is locked (only moderators can unarchive).
+    #[serde(default)]
+    pub locked: bool,
+    /// Whether non-moderators can add others to a private thread.
+    pub invitable: Option<bool>,
+    /// When the thread was created (threads created after 2022-01-09).
+    pub create_timestamp: Option<Timestamp>,
+}
+
+/// A tag that can be applied to forum posts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ForumTag {
+    /// The tag ID.
+    pub id: GenericId,
+    /// The tag name (0–20 characters).
+    pub name: String,
+    /// Whether only moderators can apply the tag.
+    #[serde(default)]
+    pub moderated: bool,
+    /// A custom emoji ID for the tag.
+    pub emoji_id: Option<GenericId>,
+    /// A unicode emoji for the tag.
+    pub emoji_name: Option<String>,
+}
+
+/// A user's membership of a thread.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ThreadMember {
+    /// The thread ID (omitted in some gateway payloads).
+    pub id: Option<ChannelId>,
+    /// The user ID (omitted in some gateway payloads).
+    pub user_id: Option<UserId>,
+    /// When the user last joined the thread.
+    pub join_timestamp: Option<Timestamp>,
+    /// Notification settings flags.
+    #[serde(default)]
+    pub flags: u64,
+}
+
+/// A guild invite.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Invite {
+    /// The invite code (`discord.gg/<code>`).
+    pub code: String,
+    /// When the invite expires, if it does.
+    pub expires_at: Option<Timestamp>,
+    /// Maximum number of uses (0 = unlimited).
+    pub max_uses: Option<u32>,
+}
+
+impl Invite {
+    /// The shareable link.
+    pub fn url(&self) -> String {
+        format!("https://discord.gg/{}", self.code)
+    }
+}
+
+/// The response of `GET /guilds/{id}/threads/active`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ActiveThreads {
+    /// The active threads.
+    pub threads: Vec<Channel>,
+    /// The bot's memberships of those threads.
+    #[serde(default)]
+    pub members: Vec<ThreadMember>,
 }
 
 /// An explicit permission overwrite for a role or member in a channel.

@@ -69,6 +69,8 @@ pub struct ClientBuilder {
     timeout: Option<Duration>,
     max_reconnect_attempts: Option<u32>,
     commands: Option<CommandRegistry>,
+    presence: Option<axis_gateway::Presence>,
+    large_threshold: Option<u8>,
 }
 
 impl Client {
@@ -110,6 +112,12 @@ impl Client {
     pub fn shutdown(&self) {
         self.shard.shutdown();
     }
+
+    /// A cloneable handle for gateway commands: presence updates, voice
+    /// state updates, and guild member requests.
+    pub fn messenger(&self) -> axis_gateway::ShardMessenger {
+        self.shard.messenger()
+    }
 }
 
 impl ClientBuilder {
@@ -123,7 +131,22 @@ impl ClientBuilder {
             timeout: None,
             max_reconnect_attempts: None,
             commands: None,
+            presence: None,
+            large_threshold: None,
         }
+    }
+
+    /// The presence to identify with (restored after every reconnect).
+    pub fn presence(mut self, presence: axis_gateway::Presence) -> Self {
+        self.presence = Some(presence);
+        self
+    }
+
+    /// Member count (50–250) above which `GUILD_CREATE` omits offline
+    /// members.
+    pub fn large_threshold(mut self, threshold: u8) -> Self {
+        self.large_threshold = Some(threshold);
+        self
     }
 
     /// Set the gateway intents to subscribe with.
@@ -203,6 +226,12 @@ impl ClientBuilder {
         if let Some(max) = self.max_reconnect_attempts {
             shard_builder = shard_builder.max_reconnect_attempts(max);
         }
+        if let Some(presence) = self.presence {
+            shard_builder = shard_builder.presence(presence);
+        }
+        if let Some(threshold) = self.large_threshold {
+            shard_builder = shard_builder.large_threshold(threshold);
+        }
         let shard = shard_builder.build()?;
 
         let commands = self.commands.map(Arc::new);
@@ -273,6 +302,13 @@ client_registration! {
     on_role_update => on_role_update: (payload: axis_model::GuildRoleChange),
     on_role_delete => on_role_delete: (payload: axis_model::GuildRoleDelete),
     on_interaction_create => on_interaction_create: (payload: axis_model::Interaction),
+    on_thread_create => on_thread_create: (payload: axis_model::Channel),
+    on_thread_update => on_thread_update: (payload: axis_model::Channel),
+    on_thread_delete => on_thread_delete: (payload: axis_model::Channel),
+    on_voice_state_update => on_voice_state_update: (payload: axis_model::VoiceState),
+    on_voice_server_update => on_voice_server_update: (payload: axis_model::VoiceServerUpdate),
+    on_typing_start => on_typing_start: (payload: axis_model::TypingStart),
+    on_guild_members_chunk => on_guild_members_chunk: (payload: axis_model::GuildMembersChunk),
     on_any => on_any: (event: Event),
     on_unknown => on_unknown: (kind: String, data: serde_json::Value),
 }

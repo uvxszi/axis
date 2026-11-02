@@ -195,12 +195,295 @@ pub struct Message {
     pub pinned: bool,
     /// The webhook that sent the message, if sent by a webhook.
     pub webhook_id: Option<WebhookId>,
-    /// The message type.
+    /// The message type. Types this library does not know yet are read
+    /// as [`MessageType::Default`] instead of dropping the message.
+    #[serde(deserialize_with = "lenient_message_type")]
     pub r#type: MessageType,
     /// The message flags.
     pub flags: Option<MessageFlags>,
     /// Reference data for replies and forwards.
     pub message_reference: Option<MessageReference>,
+    /// The author's guild member data (without `user`), on gateway
+    /// `MESSAGE_CREATE` in guilds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub member: Option<Member>,
+    /// The message this one replies to, when Discord resolved it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub referenced_message: Option<Box<Message>>,
+    /// The thread started from this message, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread: Option<crate::channel::Channel>,
+    /// Stickers sent with the message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sticker_items: Option<Vec<StickerItem>>,
+    /// Message components (buttons, and with Components V2 the whole
+    /// layout: text blocks, media galleries, containers), kept raw.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub components: Vec<serde_json::Value>,
+}
+
+impl Message {
+    /// All readable text in the message: content, embeds, and Components
+    /// V2 text blocks.
+    pub fn full_text(&self) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        if !self.content.trim().is_empty() {
+            parts.push(self.content.clone());
+        }
+        for embed in &self.embeds {
+            let mut lines = Vec::new();
+            if let Some(author) = &embed.author {
+                lines.push(author.name.clone());
+            }
+            if let Some(title) = &embed.title {
+                lines.push(format!("**{title}**"));
+            }
+            if let Some(description) = &embed.description {
+                lines.push(description.clone());
+            }
+            for field in embed.fields.iter().flatten() {
+                lines.push(format!("{}: {}", field.name, field.value));
+            }
+            if let Some(footer) = &embed.footer {
+                lines.push(footer.text.clone());
+            }
+            if !lines.is_empty() {
+                parts.push(format!("[embed] {}", lines.join(" | ")));
+            }
+        }
+        let mut texts = Vec::new();
+        let mut media = Vec::new();
+        walk_components(&self.components, &mut texts, &mut media);
+        if !texts.is_empty() {
+            parts.push(texts.join("\n"));
+        }
+        parts.join("\n")
+    }
+
+    /// Image URLs in embeds and Components V2 media (galleries,
+    /// thumbnails, files).
+    pub fn media_urls(&self) -> Vec<String> {
+        let mut urls = Vec::new();
+        for embed in &self.embeds {
+            for image in [&embed.image, &embed.thumbnail].into_iter().flatten() {
+                if let Some(url) = image.proxy_url.clone().or_else(|| image.url.clone()) {
+                    urls.push(url);
+                }
+            }
+        }
+        let mut texts = Vec::new();
+        walk_components(&self.components, &mut texts, &mut urls);
+        urls.dedup();
+        urls
+    }
+}
+
+/// Collect text and media URLs from (possibly nested) components.
+fn walk_components(
+    components: &[serde_json::Value],
+    texts: &mut Vec<String>,
+    media: &mut Vec<String>,
+) {
+    use serde_json::Value;
+    for component in components {
+        match component.get("type").and_then(Value::as_u64) {
+            // Text Display
+            Some(10) => {
+                if let Some(text) = component.get("content").and_then(Value::as_str) {
+                    texts.push(text.to_owned());
+                }
+            }
+            // Thumbnail
+            Some(11) => {
+                if let Some(url) = component.pointer("/media/url").and_then(Value::as_str) {
+                    media.push(url.to_owned());
+                }
+            }
+            // Media Gallery
+            Some(12) => {
+                for item in component
+                    .get("items")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
+                    if let Some(url) = item.pointer("/media/url").and_then(Value::as_str) {
+                        media.push(url.to_owned());
+                    }
+                }
+            }
+            // File
+            Some(13) => {
+                if let Some(url) = component.pointer("/file/url").and_then(Value::as_str) {
+                    media.push(url.to_owned());
+                }
+            }
+            _ => {}
+        }
+        for key in ["components", "accessory"] {
+            match component.get(key) {
+                Some(Value::Array(children)) => walk_components(children, texts, media),
+                Some(child @ Value::Object(_)) => {
+                    walk_components(std::slice::from_ref(child), texts, media)
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Read a message type, mapping undocumented values to
+/// [`MessageType::Default`]: a new system message type must not make a
+/// whole `MESSAGE_CREATE` fail to parse.
+fn lenient_message_type<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<MessageType, D::Error> {
+    let value = u64::deserialize(deserializer)?;
+    Ok(u8::try_from(value)
+        .ok()
+        .and_then(MessageType::from_value)
+        .unwrap_or(MessageType::Default))
+}
+
+/// The minimal sticker shape included on messages.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StickerItem {
+    /// The sticker ID.
+    pub id: axis_core::StickerId,
+    /// The sticker name.
+    pub name: String,
+    /// 1 PNG, 2 APNG, 3 Lottie, 4 GIF.
+    #[serde(default)]
+    pub format_type: u8,
+}
+
+impl StickerItem {
+    /// The sticker's image URL; `None` for Lottie (vector JSON) stickers.
+    pub fn image_url(&self) -> Option<String> {
+        match self.format_type {
+            3 => None,
+            4 => Some(format!("https://media.discordapp.net/stickers/{}.gif", self.id)),
+            _ => Some(format!("https://media.discordapp.net/stickers/{}.png", self.id)),
+        }
+    }
+}
+
+/// Controls which mentions in a sent message actually ping.
+///
+/// The default (`AllowedMentions::none()`) pings nobody — the safe choice
+/// for bots that echo user or model-generated text.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct AllowedMentions {
+    /// Mention kinds parsed from content: `"users"`, `"roles"`,
+    /// `"everyone"`.
+    pub parse: Vec<String>,
+    /// Specific users that may be pinged (max 100).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub users: Vec<UserId>,
+    /// Specific roles that may be pinged (max 100).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub roles: Vec<RoleId>,
+    /// Whether a reply pings the replied-to author.
+    #[serde(default)]
+    pub replied_user: bool,
+}
+
+impl AllowedMentions {
+    /// Ping nobody.
+    pub fn none() -> Self {
+        Self::default()
+    }
+
+    /// Ping mentioned users (but not roles or everyone).
+    pub fn users() -> Self {
+        Self {
+            parse: vec!["users".to_owned()],
+            ..Self::default()
+        }
+    }
+
+    /// Ping users and roles, but never `@everyone`/`@here`.
+    pub fn users_and_roles() -> Self {
+        Self {
+            parse: vec!["users".to_owned(), "roles".to_owned()],
+            ..Self::default()
+        }
+    }
+
+    /// Also ping the author of the replied-to message.
+    pub fn with_replied_user(mut self, ping: bool) -> Self {
+        self.replied_user = ping;
+        self
+    }
+}
+
+/// A poll to attach to a new message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PollCreate {
+    /// The question.
+    pub question: PollMedia,
+    /// The answers (1–10).
+    pub answers: Vec<PollAnswer>,
+    /// How long the poll runs, in hours (1–768).
+    pub duration: u32,
+    /// Whether voters may pick several answers.
+    pub allow_multiselect: bool,
+}
+
+impl PollCreate {
+    /// Build a single-choice poll from a question and answer texts.
+    pub fn new(
+        question: impl Into<String>,
+        answers: impl IntoIterator<Item = String>,
+        hours: u32,
+    ) -> Self {
+        Self {
+            question: PollMedia {
+                text: question.into(),
+            },
+            answers: answers
+                .into_iter()
+                .map(|text| PollAnswer {
+                    poll_media: PollMedia { text },
+                })
+                .collect(),
+            duration: hours,
+            allow_multiselect: false,
+        }
+    }
+}
+
+/// The text of a poll question or answer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PollMedia {
+    /// The text (question up to 300, answers up to 55 characters).
+    pub text: String,
+}
+
+/// A poll answer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PollAnswer {
+    /// The answer text.
+    pub poll_media: PollMedia,
+}
+
+/// One entry of `GET /channels/{id}/messages/pins`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MessagePin {
+    /// When the message was pinned.
+    pub pinned_at: Timestamp,
+    /// The pinned message.
+    pub message: Message,
+}
+
+/// The response of `GET /channels/{id}/messages/pins`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PinnedMessages {
+    /// The pins, newest first.
+    pub items: Vec<MessagePin>,
+    /// Whether more pins exist past this page.
+    #[serde(default)]
+    pub has_more: bool,
 }
 
 impl Message {
@@ -608,17 +891,43 @@ mod tests {
     }
 
     #[test]
-    fn unknown_message_type_is_an_error() {
-        // 13 is a gap in the documented message type table.
-        assert!(
-            serde_json::from_str::<Message>(
-                r#"{ "id": "1", "channel_id": "2", "author": { "id": "3", "username": "x", "discriminator": "0" },
-                     "content": "", "timestamp": "2022-09-22T14:00:00.436000+00:00", "tts": false,
-                     "mention_everyone": false, "mentions": [], "mention_roles": [], "attachments": [],
-                     "embeds": [], "pinned": false, "type": 13 }"#
-            )
-            .is_err()
+    fn components_v2_text_and_media_are_read() {
+        let message: Message = serde_json::from_value(serde_json::json!({
+            "id": "1", "channel_id": "2", "author": { "id": "3", "username": "statbot", "discriminator": "0", "bot": true },
+            "content": "", "timestamp": "2026-10-31T22:30:00+00:00", "tts": false, "mention_everyone": false,
+            "mentions": [], "mention_roles": [], "attachments": [], "embeds": [], "pinned": false, "type": 0,
+            "flags": 32768,
+            "components": [{ "type": 17, "components": [
+                { "type": 10, "content": "# Messages" },
+                { "type": 12, "items": [ { "media": { "url": "https://cdn.example/stats.png" } } ] },
+                { "type": 9, "components": [ { "type": 10, "content": "198 messages" } ],
+                  "accessory": { "type": 11, "media": { "url": "https://cdn.example/thumb.png" } } }
+            ] }]
+        }))
+        .unwrap();
+        assert_eq!(message.full_text(), "# Messages\n198 messages");
+        assert_eq!(
+            message.media_urls(),
+            vec![
+                "https://cdn.example/stats.png",
+                "https://cdn.example/thumb.png"
+            ]
         );
+    }
+
+    #[test]
+    fn unknown_message_type_reads_as_default() {
+        // 13 is a gap in the documented message type table. The message
+        // must still parse: dropping a whole MESSAGE_CREATE because Discord
+        // added a system message type would silently lose messages.
+        let message = serde_json::from_str::<Message>(
+            r#"{ "id": "1", "channel_id": "2", "author": { "id": "3", "username": "x", "discriminator": "0" },
+                 "content": "", "timestamp": "2022-09-22T14:00:00.436000+00:00", "tts": false,
+                 "mention_everyone": false, "mentions": [], "mention_roles": [], "attachments": [],
+                 "embeds": [], "pinned": false, "type": 13 }"#,
+        )
+        .unwrap();
+        assert_eq!(message.r#type, MessageType::Default);
     }
 
     #[test]
