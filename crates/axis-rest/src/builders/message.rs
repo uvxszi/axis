@@ -206,6 +206,7 @@ pub struct EditMessage<'a> {
     channel_id: ChannelId,
     message_id: MessageId,
     fields: EditMessageFields,
+    files: Vec<crate::client::FileUpload>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -218,6 +219,10 @@ struct EditMessageFields {
     flags: Option<MessageFlags>,
     #[serde(skip_serializing_if = "Option::is_none")]
     allowed_mentions: Option<AllowedMentions>,
+    /// Sent ONLY when explicitly managed (clear_attachments); omitting it
+    /// keeps every attachment the message already has.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    attachments: Option<Vec<serde_json::Value>>,
 }
 
 impl<'a> EditMessage<'a> {
@@ -227,7 +232,29 @@ impl<'a> EditMessage<'a> {
             channel_id,
             message_id,
             fields: EditMessageFields::default(),
+            files: Vec::new(),
         }
+    }
+
+    /// Attach a file to the message with this edit (up to 10 total).
+    ///
+    /// Files sent here are ADDED; attachments already on the message are
+    /// kept unless [`Self::clear_attachments`] is called. A content-only
+    /// edit (no files, no `clear_attachments`) never removes existing
+    /// attachments.
+    pub fn file(mut self, filename: impl Into<String>, bytes: Vec<u8>) -> Self {
+        self.files.push(crate::client::FileUpload {
+            filename: filename.into(),
+            bytes,
+        });
+        self
+    }
+
+    /// Drop the attachments already on the message (they are kept by
+    /// default, including on content-only edits).
+    pub fn clear_attachments(mut self) -> Self {
+        self.fields.attachments = Some(vec![]);
+        self
     }
 
     /// Set new message content (up to 2000 characters).
@@ -267,28 +294,44 @@ impl<'a> EditMessage<'a> {
         self
     }
 
-    pub(crate) async fn execute(self) -> Result<Message> {
-        let content_chars = self
-            .fields
-            .content
-            .as_ref()
-            .and_then(|content| content.as_ref())
-            .map_or(0, |content| content.chars().count());
-        if content_chars > 2000 {
-            return Err(AxisError::invalid_data(format!(
-                "message content is {content_chars} characters; Discord allows at most 2000"
-            )));
+    pub(crate) async fn execute(self) -> Result<Message> {        let mut fields = self.fields;
+        if !self.files.is_empty() {
+            // Describe the new files so Discord attaches them; the ids
+            // index into THIS request's files[N] parts. Existing
+            // attachments are kept (we never send an empty array).
+            let described: Vec<serde_json::Value> = self
+                .files
+                .iter()
+                .enumerate()
+                .map(|(index, file)| {
+                    serde_json::json!({
+                        "id": index,
+                        "filename": file.filename,
+                    })
+                })
+                .collect();
+            fields.attachments = Some(described);
         }
-
-        let body = serde_json::to_vec(&self.fields)
-            .map_err(|error| AxisError::Serialization(error.into()))?;
         let route = Route::with_major(
             reqwest::Method::PATCH,
             "/channels/{channel_id}/messages/{message_id}",
-            format!("/channels/{}/messages/{}", self.channel_id, self.message_id),
+            format!(
+                "/channels/{}/messages/{}",
+                self.channel_id, self.message_id
+            ),
             self.channel_id.get(),
         );
-        self.http.json(route, Some(body), None).await
+        if self.files.is_empty() {
+            let body = serde_json::to_vec(&fields)
+                .map_err(|error| AxisError::Serialization(error.into()))?;
+            self.http.json(route, Some(body), None).await
+        } else {
+            let json = serde_json::to_vec(&fields)
+                .map_err(|error| AxisError::Serialization(error.into()))?;
+            self.http
+                .json_with_files(route, json, self.files)
+                .await
+        }
     }
 }
 
